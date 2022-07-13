@@ -10,13 +10,16 @@ import sqlite3
 from sqlite3 import Error
 from datetime import datetime
 
+
 async def get_records():
     response = await client.get()
     return response
 
+
 async def get_records_since(start_time):
     response = await client.get_stopped_since(start_time)
     return response
+
 
 async def create_time_db(time_db_path):
     create_table_sql = ''' CREATE TABLE IF NOT EXISTS times (
@@ -39,6 +42,7 @@ async def create_time_db(time_db_path):
     except Error as e:
         print(e)
 
+
 async def get_start_time(time_db_path):
     try:
         conn = sqlite3.connect(time_db_path)
@@ -51,6 +55,7 @@ async def get_start_time(time_db_path):
         return start_time
     except Error as e:
         print(e)
+
 
 async def get_report_time(time_db_path):
     if Path(time_db_path).is_file():
@@ -69,6 +74,7 @@ async def get_report_time(time_db_path):
         report_time = await create_time_db(time_db_path)
         return report_time
 
+
 async def update_time_db(stop_time, report_time, time_db_path):
     update_sql = ''' UPDATE times
                      SET last_end_time = ? ,
@@ -82,6 +88,7 @@ async def update_time_db(stop_time, report_time, time_db_path):
         conn.close()
     except Error as e:
         print(e)
+
 
 async def create_report(records):
     report = 'APEL-summary-job-message: v0.3\n'
@@ -98,10 +105,13 @@ Site: {site_id}
 
     return 'nagut'
 
+
 async def main(client: AuditorClient, time_db_path, run_interval, report_interval):
+    await client.start()
+
     while True:
         last_report_time = await get_report_time(time_db_path)
-        last_report_time = datetime.strptime(last_report_time,'%Y-%m-%dT%H:%M:%SZ')
+        last_report_time = datetime.strptime(last_report_time, '%Y-%m-%dT%H:%M:%SZ')
         current_time = datetime.now()
 
         print((current_time-last_report_time).total_seconds())
@@ -112,8 +122,6 @@ async def main(client: AuditorClient, time_db_path, run_interval, report_interva
             continue
         else:
             print('Enough time passed since last report, do it again!')
-
-        await client.start()
 
         start_time = await get_start_time(time_db_path)
 
@@ -129,10 +137,9 @@ async def main(client: AuditorClient, time_db_path, run_interval, report_interva
             latest_report_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
             await update_time_db(latest_stop_time, latest_report_time, time_db_path)
             print(latest_stop_time)
-        except:
+        except IndexError:
             print('No new records, do nothing for now!')
 
-        await client.stop()
         await asyncio.sleep(run_interval)
 
 if __name__ == '__main__':
@@ -145,9 +152,8 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
 
     try:
-        asyncio.run(main(client,time_db_path,run_interval,report_interval))
+        asyncio.run(main(client, time_db_path, run_interval, report_interval))
     except KeyboardInterrupt:
         print("User abort")
-        pass
     finally:
         asyncio.run(client.stop())
