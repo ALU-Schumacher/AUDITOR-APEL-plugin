@@ -12,17 +12,17 @@ from datetime import datetime
 import configparser
 
 
-async def get_records():
+async def get_records(client):
     response = await client.get()
     return response
 
 
-async def get_records_since(start_time):
+async def get_records_since(client, start_time):
     response = await client.get_stopped_since(start_time)
     return response
 
 
-async def create_time_db():
+async def create_time_db(time_db_path):
     create_table_sql = ''' CREATE TABLE IF NOT EXISTS times (
                              target TEXT UNIQUE NOT NULL,
                              last_end_time TEXT NOT NULL,
@@ -44,7 +44,9 @@ async def create_time_db():
         print(e)
 
 
-async def get_start_time():
+async def get_start_time(config):
+    time_db_path = config['paths']['time_db_path']
+
     try:
         conn = sqlite3.connect(time_db_path)
         cur = conn.cursor()
@@ -58,7 +60,9 @@ async def get_start_time():
         print(e)
 
 
-async def get_report_time():
+async def get_report_time(config):
+    time_db_path = config['paths']['time_db_path']
+
     if Path(time_db_path).is_file():
         try:
             conn = sqlite3.connect(time_db_path)
@@ -72,11 +76,13 @@ async def get_report_time():
         except Error as e:
             print(e)
     else:
-        report_time = await create_time_db()
+        report_time = await create_time_db(time_db_path)
         return report_time
 
 
-async def update_time_db(stop_time, report_time):
+async def update_time_db(config, stop_time, report_time):
+    time_db_path = config['paths']['time_db_path']
+
     update_sql = ''' UPDATE times
                      SET last_end_time = ? ,
                          last_report_time = ?'''
@@ -91,11 +97,13 @@ async def update_time_db(stop_time, report_time):
         print(e)
 
 
-async def create_report(records):
+async def create_report(config, records):
+    site_name = config['site'].get('site_name', fallback=None)
+
     report = 'APEL-summary-job-message: v0.3\n'
     for r in records:
         print('try apel style')
-        if site_name:
+        if site_name is not None:
             site_id = site_name
         else:
             site_id = r['site_id']
@@ -110,11 +118,14 @@ Site: {site_id}
     return 'nagut'
 
 
-async def main():
+async def run(config, client):
+    run_interval = config['intervals'].getint('run_interval')
+    report_interval = config['intervals'].getint('report_interval')
+
     await client.start()
 
     while True:
-        last_report_time = await get_report_time()
+        last_report_time = await get_report_time(config)
         last_report_time = datetime.strptime(last_report_time, '%Y-%m-%dT%H:%M:%SZ')
         current_time = datetime.now()
 
@@ -127,43 +138,43 @@ async def main():
         else:
             print('Enough time passed since last report, do it again!')
 
-        start_time = await get_start_time()
+        start_time = await get_start_time(config)
 
-        records = await get_records_since(start_time)
+        records = await get_records_since(client, start_time)
 
         for r in records:
             print(r)
 
         try:
             latest_stop_time = records[-1]['stop_time']
-            report = await create_report(records)
+            report = await create_report(config, records)
             # await send_report(report)
             latest_report_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
-            await update_time_db(latest_stop_time, latest_report_time)
+            await update_time_db(config, latest_stop_time, latest_report_time)
             print(latest_stop_time)
         except IndexError:
             print('No new records, do nothing for now!')
 
         await asyncio.sleep(run_interval)
 
-if __name__ == '__main__':
+
+def main():
+    logging.basicConfig(level=logging.DEBUG)
 
     config = configparser.ConfigParser()
     config.read('apel_plugin.cfg')
 
     auditor_ip = config['auditor']['auditor_ip']
-    time_db_path = config['paths']['time_db_path']
-    run_interval = config['intervals'].getint('run_interval')
-    report_interval = config['intervals'].getint('report_interval')
-    site_name = config['site'].get('site_name', fallback=None)
-
-    logging.basicConfig(level=logging.DEBUG)
-
-    client = AuditorClient(auditor_ip, 8000, num_workers=1, db=None)
+    auditor_port = config['auditor'].getint('auditor_port')
+    client = AuditorClient(auditor_ip, auditor_port, num_workers=1, db=None)
 
     try:
-        asyncio.run(main())
+        asyncio.run(run(config, client))
     except KeyboardInterrupt:
         print("User abort")
     finally:
         asyncio.run(client.stop())
+
+
+if __name__ == '__main__':
+    main()
