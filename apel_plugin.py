@@ -25,21 +25,24 @@ async def get_records_since(client, start_time):
 async def create_time_db(time_db_path):
     create_table_sql = ''' CREATE TABLE IF NOT EXISTS times (
                              target TEXT UNIQUE NOT NULL,
-                             last_end_time TEXT NOT NULL,
-                             last_report_time TEXT NOT NULL
+                             last_end_time timestamp NOT NULL,
+                             last_report_time timestamp NOT NULL
                            ); '''
 
     insert_sql = ''' INSERT INTO times(target, last_end_time, last_report_time)
-                     VALUES("arex/jura/apel:EGI","1970-01-01T01:00:00Z","1970-01-01T01:00:00Z")'''
+                     VALUES(?, ?, ?); '''
+    ini_time = datetime(1970, 1, 1, 0, 0, 0)
+    data_tuple = ('arex/jura/apel:EGI', ini_time, ini_time)
+
     try:
-        conn = sqlite3.connect(time_db_path)
+        conn = sqlite3.connect(time_db_path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
         cur = conn.cursor()
         cur.execute(create_table_sql)
-        cur.execute(insert_sql)
+        cur.execute(insert_sql, data_tuple)
         conn.commit()
         cur.close()
         conn.close()
-        return '1970-01-01T01:00:00Z'
+        return ini_time
     except Error as e:
         print(e)
 
@@ -48,14 +51,13 @@ async def get_start_time(config):
     time_db_path = config['paths']['time_db_path']
 
     try:
-        conn = sqlite3.connect(time_db_path)
+        conn = sqlite3.connect(time_db_path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
         cur = conn.cursor()
         cur.row_factory = lambda cursor, row: row[0]
         cur.execute('SELECT last_end_time FROM times')
         start_time = cur.fetchall()[0]
         cur.close()
         conn.close()
-        print(f'START TIME {start_time}')
         return start_time
     except Error as e:
         print(e)
@@ -66,7 +68,7 @@ async def get_report_time(config):
 
     if Path(time_db_path).is_file():
         try:
-            conn = sqlite3.connect(time_db_path)
+            conn = sqlite3.connect(time_db_path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
             cur = conn.cursor()
             cur.row_factory = lambda cursor, row: row[0]
             cur.execute('SELECT last_report_time FROM times')
@@ -86,9 +88,9 @@ async def update_time_db(config, stop_time, report_time):
 
     update_sql = ''' UPDATE times
                      SET last_end_time = ? ,
-                         last_report_time = ?'''
+                         last_report_time = ? '''
     try:
-        conn = sqlite3.connect(time_db_path)
+        conn = sqlite3.connect(time_db_path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
         cur = conn.cursor()
         cur.execute(update_sql, (stop_time, report_time))
         conn.commit()
@@ -99,15 +101,48 @@ async def update_time_db(config, stop_time, report_time):
 
 # TODO: CREATE TABLE, FILL TABLE, MERGE RECORDS, CREATE SUMMARIES FROM MERGED RECORDS
 async def create_records_db(config, records):
+    # create_table_sql = ''' CREATE TABLE IF NOT EXISTS records (
+    #                          year INTEGER NOT NULL,
+    #                          month INTEGER NOT NULL,
+    #                          user TEXT NOT NULL.
+    #                          vo TEXT NOT NULL,
+    #                          endpoint TEXT NOT NULL,
+    #                          nodecount INTEGER NOT NULL,
+    #                          cpucount INTEGER NOT NULL,
+    #                          fqan TEXT NOT NULL,
+    #                          benchmark TEXT NOT NULL,
+    #                          recordid INTEGER NOT NULL,
+    #                          walltime INTEGER NOT NULL,
+    #                          cputime INTEGER NOT NULL,
+    #                          starttime INTEGER NOT NULL,
+    #                          endtime INTEGER NOT NULL
+    #                        ); '''
+
     create_table_sql = ''' CREATE TABLE IF NOT EXISTS records (
-                             walltime TEXT NOT NULL,
-                             cputime TEXT NOT NULL
+                             year INTEGER NOT NULL,
+                             month INTEGER NOT NULL,
+                             user TEXT NOT NULL,
+                             groupid TEXT NOT NULL,
+                             cpucount INTEGER NOT NULL,
+                             benchmarktype TEXT NOT NULL,
+                             benchmarkvalue FLOAT NOT NULL,
+                             recordid TEXT NOT NULL,
+                             runtime INTEGER NOT NULL,
+                             starttime INTEGER NOT NULL,
+                             stoptime INTEGER NOT NULL
                            ); '''
+
+    insert_record_sql = ''' INSERT INTO records(year, month, user, groupid, cpucount, benchmarktype, benchmarkvalue, recordid, runtime, starttime, stoptime)
+                            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '''
 
     conn = sqlite3.connect(':memory:')
     cur = conn.cursor()
     cur.execute(create_table_sql)
-    pass
+    
+    for r in records:
+        data_tuple = (10, 10, r.user_id, r.group_id, 8, 'HEP', '1.0', r.record_id, r.runtime, r.start_time, r.stop_time)
+        print(data_tuple)
+        cur.execute(insert_record_sql, data_tuple)
 
 
 async def merge_records(config, records):
@@ -128,8 +163,8 @@ async def create_report(config, records):
         if site_name is not None:
             site_id = site_name
         else:
-            site_id = r['site_id']
-        user_id = r['user_id']
+            site_id = r.site_id
+        user_id = r.user_id
         report_part = f'''User: {user_id}
 Site: {site_id}
 %%\n'''
@@ -146,7 +181,6 @@ async def run(config, client):
 
     while True:
         last_report_time = await get_report_time(config)
-        last_report_time = datetime.strptime(last_report_time, '%Y-%m-%dT%H:%M:%SZ')
         current_time = datetime.now()
 
         print((current_time-last_report_time).total_seconds())
@@ -161,17 +195,22 @@ async def run(config, client):
         start_time = await get_start_time(config)
 
         records = await get_records_since(client, start_time)
-
-        for r in records:
-            print(r)
+        await create_records_db(config, records)
+        # for r in records:
+        #     print(r.record_id, r.site_id, r.user_id, r.group_id, r.start_time, r.stop_time, r.runtime, r.components)
+        #     for c in r.components:
+        #         print(c.name, c.amount, c.scores)
+        #         for s in c.scores:
+        #             print(s.name, s.factor)
 
         try:
-            latest_stop_time = records[-1]['stop_time']
-            report = await create_report(config, records)
-            # await send_report(report)
-            latest_report_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
-            await update_time_db(config, latest_stop_time, latest_report_time)
+            latest_stop_time = records[-1].stop_time
+            print('latest_stop_time')
             print(latest_stop_time)
+            # report = await create_report(config, records)
+            # await send_report(report)
+            latest_report_time = datetime.now()
+            await update_time_db(config, latest_stop_time, latest_report_time)
         except IndexError:
             print('No new records, do nothing for now!')
 
@@ -193,9 +232,9 @@ def main():
     try:
         asyncio.run(run(config, client))
     except KeyboardInterrupt:
-        print("User abort")
-#    finally:
-#        asyncio.run(client.stop())
+        print('User abort')
+    finally:
+        print('APEL plugin stopped')
 
 
 if __name__ == '__main__':
