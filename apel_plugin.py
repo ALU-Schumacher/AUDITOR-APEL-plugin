@@ -3,7 +3,7 @@
 from __future__ import annotations
 import logging
 import asyncio
-from auditorclient.client import AuditorClient
+from pyauditor import AuditorClientBuilder
 from pprint import pprint
 from pathlib import Path
 import sqlite3
@@ -55,6 +55,7 @@ async def get_start_time(config):
         start_time = cur.fetchall()[0]
         cur.close()
         conn.close()
+        print(f'START TIME {start_time}')
         return start_time
     except Error as e:
         print(e)
@@ -96,6 +97,27 @@ async def update_time_db(config, stop_time, report_time):
     except Error as e:
         print(e)
 
+# TODO: CREATE TABLE, FILL TABLE, MERGE RECORDS, CREATE SUMMARIES FROM MERGED RECORDS
+async def create_records_db(config, records):
+    create_table_sql = ''' CREATE TABLE IF NOT EXISTS records (
+                             walltime TEXT NOT NULL,
+                             cputime TEXT NOT NULL
+                           ); '''
+
+    conn = sqlite3.connect(':memory:')
+    cur = conn.cursor()
+    cur.execute(create_table_sql)
+    pass
+
+
+async def merge_records(config, records):
+    pass
+
+
+async def create_summary(config, records):
+    await merge_records(config, records)
+    pass
+
 
 async def create_report(config, records):
     site_name = config['site'].get('site_name', fallback=None)
@@ -121,8 +143,6 @@ Site: {site_id}
 async def run(config, client):
     run_interval = config['intervals'].getint('run_interval')
     report_interval = config['intervals'].getint('report_interval')
-
-    await client.start()
 
     while True:
         last_report_time = await get_report_time(config)
@@ -166,14 +186,16 @@ def main():
 
     auditor_ip = config['auditor']['auditor_ip']
     auditor_port = config['auditor'].getint('auditor_port')
-    client = AuditorClient(auditor_ip, auditor_port, num_workers=1, db=None)
+    builder = AuditorClientBuilder()
+    builder = builder.address(auditor_ip, auditor_port)
+    client = builder.build()
 
     try:
         asyncio.run(run(config, client))
     except KeyboardInterrupt:
         print("User abort")
-    finally:
-        asyncio.run(client.stop())
+#    finally:
+#        asyncio.run(client.stop())
 
 
 if __name__ == '__main__':
