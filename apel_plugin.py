@@ -10,6 +10,7 @@ import sqlite3
 from sqlite3 import Error
 from datetime import datetime
 import configparser
+import pytz
 
 
 async def get_records(client):
@@ -100,7 +101,7 @@ async def update_time_db(config, stop_time, report_time):
         print(e)
 
 # TODO: CREATE TABLE, FILL TABLE, MERGE RECORDS, CREATE SUMMARIES FROM MERGED RECORDS
-async def create_records_db(config, records):
+async def create_records_db(records):
     # create_table_sql = ''' CREATE TABLE IF NOT EXISTS records (
     #                          year INTEGER NOT NULL,
     #                          month INTEGER NOT NULL,
@@ -140,10 +141,33 @@ async def create_records_db(config, records):
     cur.execute(create_table_sql)
     
     for r in records:
-        data_tuple = (10, 10, r.user_id, r.group_id, 8, 'HEP', '1.0', r.record_id, r.runtime, r.start_time, r.stop_time)
-        print(data_tuple)
+        print(r.stop_time)
+        print(r.stop_time.timestamp())
+        year = r.stop_time.year
+        month = r.stop_time.month
+        for c in r.components:
+            if c.name == 'Cores':
+                cpucount = c.amount
+                for s in c.scores:
+                    if s.name == 'HEPSPEC':
+                        benchmark_value = s.factor
+                        benchmark_type = s.name
+
+        data_tuple = (year, month, r.user_id, r.group_id, cpucount, benchmark_type, benchmark_value, r.record_id, r.runtime, r.start_time.timestamp(), r.stop_time.timestamp())
         cur.execute(insert_record_sql, data_tuple)
 
+    cur.close()
+
+    return conn
+
+async def create_summary_db(records_db):
+    cur = records_db.cursor()
+    test_sql = '''SELECT user, year, month, COUNT(recordid), SUM(runtime), MIN(stoptime), MAX(stoptime) FROM records GROUP BY user, year, month, benchmarktype, benchmarkvalue'''
+    cur.execute(test_sql)
+    pprint(cur.fetchall())
+
+    cur.close()
+    records_db.close()
 
 async def merge_records(config, records):
     pass
@@ -183,7 +207,7 @@ async def run(config, client):
         last_report_time = await get_report_time(config)
         current_time = datetime.now()
 
-        print((current_time-last_report_time).total_seconds())
+        # print((current_time-last_report_time).total_seconds())
 
         if not (current_time-last_report_time).total_seconds() >= report_interval:
             print('Too soon, do nothing for now!')
@@ -195,13 +219,8 @@ async def run(config, client):
         start_time = await get_start_time(config)
 
         records = await get_records_since(client, start_time)
-        await create_records_db(config, records)
-        # for r in records:
-        #     print(r.record_id, r.site_id, r.user_id, r.group_id, r.start_time, r.stop_time, r.runtime, r.components)
-        #     for c in r.components:
-        #         print(c.name, c.amount, c.scores)
-        #         for s in c.scores:
-        #             print(s.name, s.factor)
+        records_db = await create_records_db(records)
+        await create_summary_db(records_db)
 
         try:
             latest_stop_time = records[-1].stop_time
