@@ -26,14 +26,14 @@ async def get_records_since(client, start_time):
 async def create_time_db(time_db_path):
     create_table_sql = ''' CREATE TABLE IF NOT EXISTS times (
                              target TEXT UNIQUE NOT NULL,
-                             last_end_time timestamp NOT NULL,
+                             last_end_time INTEGER NOT NULL,
                              last_report_time timestamp NOT NULL
                            ); '''
 
     insert_sql = ''' INSERT INTO times(target, last_end_time, last_report_time)
                      VALUES(?, ?, ?); '''
     ini_time = datetime(1970, 1, 1, 0, 0, 0)
-    data_tuple = ('arex/jura/apel:EGI', ini_time, ini_time)
+    data_tuple = ('arex/jura/apel:EGI', 0, ini_time)
 
     try:
         conn = sqlite3.connect(time_db_path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
@@ -56,7 +56,7 @@ async def get_start_time(config):
         cur = conn.cursor()
         cur.row_factory = lambda cursor, row: row[0]
         cur.execute('SELECT last_end_time FROM times')
-        start_time = cur.fetchall()[0]
+        start_time = datetime.fromtimestamp(cur.fetchall()[0], tz=pytz.utc)
         cur.close()
         conn.close()
         return start_time
@@ -141,10 +141,8 @@ async def create_records_db(records):
     cur.execute(create_table_sql)
     
     for r in records:
-        print(r.stop_time)
-        print(r.stop_time.timestamp())
-        year = r.stop_time.year
-        month = r.stop_time.month
+        year = r.stop_time.replace(tzinfo=pytz.utc).year
+        month = r.stop_time.replace(tzinfo=pytz.utc).month
         for c in r.components:
             if c.name == 'Cores':
                 cpucount = c.amount
@@ -153,9 +151,11 @@ async def create_records_db(records):
                         benchmark_value = s.factor
                         benchmark_type = s.name
 
-        data_tuple = (year, month, r.user_id, r.group_id, cpucount, benchmark_type, benchmark_value, r.record_id, r.runtime, r.start_time.timestamp(), r.stop_time.timestamp())
+        data_tuple = (year, month, r.user_id, r.group_id, cpucount, benchmark_type, benchmark_value, r.record_id, r.runtime, r.start_time.replace(tzinfo=pytz.utc).timestamp(), r.stop_time.replace(tzinfo=pytz.utc).timestamp())
+        #pprint(data_tuple)
         cur.execute(insert_record_sql, data_tuple)
 
+    conn.commit()
     cur.close()
 
     return conn
@@ -164,39 +164,48 @@ async def create_summary_db(records_db):
     cur = records_db.cursor()
     test_sql = '''SELECT user, year, month, COUNT(recordid), SUM(runtime), MIN(stoptime), MAX(stoptime) FROM records GROUP BY user, year, month, benchmarktype, benchmarkvalue'''
     cur.execute(test_sql)
+    records_db.commit()
     pprint(cur.fetchall())
 
     cur.close()
-    records_db.close()
+ 
+    return records_db
 
-async def merge_records(config, records):
-    pass
+async def create_summary(summary_db):
+    cur = summary_db.cursor()
+    pprint(cur.fetchall())
+
+    cur.close()
+    summary_db.close()
+
+# async def merge_records(config, records):
+#     pass
 
 
-async def create_summary(config, records):
-    await merge_records(config, records)
-    pass
+# async def create_summary(config, records):
+#     await merge_records(config, records)
+#     pass
 
 
-async def create_report(config, records):
-    site_name = config['site'].get('site_name', fallback=None)
+# async def create_report(config, records):
+#     site_name = config['site'].get('site_name', fallback=None)
 
-    report = 'APEL-summary-job-message: v0.3\n'
-    for r in records:
-        print('try apel style')
-        if site_name is not None:
-            site_id = site_name
-        else:
-            site_id = r.site_id
-        user_id = r.user_id
-        report_part = f'''User: {user_id}
-Site: {site_id}
-%%\n'''
-        report += report_part
+#     report = 'APEL-summary-job-message: v0.3\n'
+#     for r in records:
+#         print('try apel style')
+#         if site_name is not None:
+#             site_id = site_name
+#         else:
+#             site_id = r.site_id
+#         user_id = r.user_id
+#         report_part = f'''User: {user_id}
+# Site: {site_id}
+# %%\n'''
+#         report += report_part
 
-    print(report)
+#     print(report)
 
-    return 'nagut'
+#     return 'nagut'
 
 
 async def run(config, client):
@@ -217,15 +226,16 @@ async def run(config, client):
             print('Enough time passed since last report, do it again!')
 
         start_time = await get_start_time(config)
+        print(f'Getting records since {start_time}')
 
         records = await get_records_since(client, start_time)
         records_db = await create_records_db(records)
-        await create_summary_db(records_db)
+        summary_db = await create_summary_db(records_db)
+        await create_summary(summary_db)
 
         try:
-            latest_stop_time = records[-1].stop_time
-            print('latest_stop_time')
-            print(latest_stop_time)
+            latest_stop_time = records[-1].stop_time.replace(tzinfo=pytz.utc).timestamp()
+            print(f'Latest stop time is {datetime.fromtimestamp(latest_stop_time, tz=pytz.utc)}')
             # report = await create_report(config, records)
             # await send_report(report)
             latest_report_time = datetime.now()
