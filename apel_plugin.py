@@ -100,7 +100,7 @@ async def update_time_db(config, stop_time, report_time):
     except Error as e:
         print(e)
 
-# TODO: CREATE TABLE, FILL TABLE, MERGE RECORDS, CREATE SUMMARIES FROM MERGED RECORDS
+
 async def create_records_db(records):
     # create_table_sql = ''' CREATE TABLE IF NOT EXISTS records (
     #                          year INTEGER NOT NULL,
@@ -152,7 +152,6 @@ async def create_records_db(records):
                         benchmark_type = s.name
 
         data_tuple = (year, month, r.user_id, r.group_id, cpucount, benchmark_type, benchmark_value, r.record_id, r.runtime, r.start_time.replace(tzinfo=pytz.utc).timestamp(), r.stop_time.replace(tzinfo=pytz.utc).timestamp())
-        #pprint(data_tuple)
         cur.execute(insert_record_sql, data_tuple)
 
     conn.commit()
@@ -161,31 +160,43 @@ async def create_records_db(records):
     return conn
 
 async def create_summary_db(records_db):
+    records_db.row_factory = sqlite3.Row
     cur = records_db.cursor()
-    test_sql = '''SELECT user, year, month, COUNT(recordid), SUM(runtime), MIN(stoptime), MAX(stoptime) FROM records GROUP BY user, year, month, benchmarktype, benchmarkvalue'''
-    cur.execute(test_sql)
-    records_db.commit()
-    pprint(cur.fetchall())
+    group_sql = '''SELECT user, year, month, cpucount, COUNT(recordid) as jobcount, SUM(runtime) as runtime, MIN(stoptime) as min_stoptime, MAX(stoptime) as max_stoptime FROM records GROUP BY user, year, month, benchmarktype, benchmarkvalue, cpucount'''
+    cur.execute(group_sql)
+
+    grouped_dict = cur.fetchall()
 
     cur.close()
- 
-    return records_db
+    records_db.close()
 
-async def create_summary(summary_db):
-    cur = summary_db.cursor()
-    pprint(cur.fetchall())
+    return grouped_dict
 
-    cur.close()
-    summary_db.close()
+async def create_summary(grouped_dict):
+    summary = 'APEL-summary-job-message: v0.3\n'
 
-# async def merge_records(config, records):
-#     pass
+    for entry in grouped_dict:
+        summary += f'Site: ???\n'
+        summary += f'Month: {entry["month"]}\n'
+        summary += f'Year: {entry["year"]}\n'
+        summary += f'GlobalUserName: ???\n'
+        summary += f'VO: ???\n'
+        summary += f'VOGroup: ???\n'
+        summary += f'VORole: ???\n'
+        summary += f'SubmitHost: ???\n'
+        summary += f'Infrastructure: ???\n'
+        summary += f'Processors: {entry["cpucount"]}\n'
+        summary += f'NodeCount: ???\n'
+        summary += f'EarliestEndTime: {entry["min_stoptime"]}\n'
+        summary += f'LatestEndTime: {entry["max_stoptime"]}\n'
+        summary += f'WallDuration : {entry["runtime"]}\n'
+        summary += f'CpuDuration: ???\n'
+        summary += f'NormalisedWallDuration: ???\n'
+        summary += f'NormalisedCpuDuration: ???\n'
+        summary += f'NumberOfJobs: {entry["jobcount"]}\n'
+        summary += '%%\n'
 
-
-# async def create_summary(config, records):
-#     await merge_records(config, records)
-#     pass
-
+    return(summary)
 
 # async def create_report(config, records):
 #     site_name = config['site'].get('site_name', fallback=None)
@@ -216,8 +227,6 @@ async def run(config, client):
         last_report_time = await get_report_time(config)
         current_time = datetime.now()
 
-        # print((current_time-last_report_time).total_seconds())
-
         if not (current_time-last_report_time).total_seconds() >= report_interval:
             print('Too soon, do nothing for now!')
             await asyncio.sleep(run_interval)
@@ -225,19 +234,21 @@ async def run(config, client):
         else:
             print('Enough time passed since last report, do it again!')
 
-        start_time = await get_start_time(config)
-        print(f'Getting records since {start_time}')
-
-        records = await get_records_since(client, start_time)
-        records_db = await create_records_db(records)
-        summary_db = await create_summary_db(records_db)
-        await create_summary(summary_db)
-
         try:
+            start_time = await get_start_time(config)
+            print(f'Getting records since {start_time}')
+            records = await get_records_since(client, start_time)
             latest_stop_time = records[-1].stop_time.replace(tzinfo=pytz.utc).timestamp()
             print(f'Latest stop time is {datetime.fromtimestamp(latest_stop_time, tz=pytz.utc)}')
+
+            # maybe move this into one function create_summary(records)?
+            records_db = await create_records_db(records)
+            grouped_dict = await create_summary_db(records_db)
+            summary = await create_summary(grouped_dict)
+            print(summary)
+            
             # report = await create_report(config, records)
-            # await send_report(report)
+            # await send_summary(summary)
             latest_report_time = datetime.now()
             await update_time_db(config, latest_stop_time, latest_report_time)
         except IndexError:
@@ -254,6 +265,7 @@ def main():
 
     auditor_ip = config['auditor']['auditor_ip']
     auditor_port = config['auditor'].getint('auditor_port')
+
     builder = AuditorClientBuilder()
     builder = builder.address(auditor_ip, auditor_port)
     client = builder.build()
