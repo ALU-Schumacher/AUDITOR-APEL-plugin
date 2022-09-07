@@ -36,7 +36,10 @@ async def create_time_db(time_db_path):
     data_tuple = ('arex/jura/apel:EGI', 0, ini_time)
 
     try:
-        conn = sqlite3.connect(time_db_path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+        conn = sqlite3.connect(
+            time_db_path,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
+        )
         cur = conn.cursor()
         cur.execute(create_table_sql)
         cur.execute(insert_sql, data_tuple)
@@ -52,7 +55,10 @@ async def get_start_time(config):
     time_db_path = config['paths']['time_db_path']
 
     try:
-        conn = sqlite3.connect(time_db_path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+        conn = sqlite3.connect(
+            time_db_path,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
+        )
         cur = conn.cursor()
         cur.row_factory = lambda cursor, row: row[0]
         cur.execute('SELECT last_end_time FROM times')
@@ -69,7 +75,10 @@ async def get_report_time(config):
 
     if Path(time_db_path).is_file():
         try:
-            conn = sqlite3.connect(time_db_path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+            conn = sqlite3.connect(
+                time_db_path,
+                detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
+            )
             cur = conn.cursor()
             cur.row_factory = lambda cursor, row: row[0]
             cur.execute('SELECT last_report_time FROM times')
@@ -91,7 +100,10 @@ async def update_time_db(config, stop_time, report_time):
                      SET last_end_time = ? ,
                          last_report_time = ? '''
     try:
-        conn = sqlite3.connect(time_db_path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+        conn = sqlite3.connect(
+            time_db_path,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
+        )
         cur = conn.cursor()
         cur.execute(update_sql, (stop_time, report_time))
         conn.commit()
@@ -139,7 +151,7 @@ async def create_records_db(records):
     conn = sqlite3.connect(':memory:')
     cur = conn.cursor()
     cur.execute(create_table_sql)
-    
+
     for r in records:
         year = r.stop_time.replace(tzinfo=pytz.utc).year
         month = r.stop_time.replace(tzinfo=pytz.utc).month
@@ -151,13 +163,26 @@ async def create_records_db(records):
                         benchmark_value = s.factor
                         benchmark_type = s.name
 
-        data_tuple = (year, month, r.user_id, r.group_id, cpucount, benchmark_type, benchmark_value, r.record_id, r.runtime, r.start_time.replace(tzinfo=pytz.utc).timestamp(), r.stop_time.replace(tzinfo=pytz.utc).timestamp())
+        data_tuple = (
+            year,
+            month,
+            r.user_id,
+            r.group_id,
+            cpucount,
+            benchmark_type,
+            benchmark_value,
+            r.record_id,
+            r.runtime,
+            r.start_time.replace(tzinfo=pytz.utc).timestamp(),
+            r.stop_time.replace(tzinfo=pytz.utc).timestamp()
+        )
         cur.execute(insert_record_sql, data_tuple)
 
     conn.commit()
     cur.close()
 
     return conn
+
 
 async def create_summary_db(records_db):
     records_db.row_factory = sqlite3.Row
@@ -171,6 +196,7 @@ async def create_summary_db(records_db):
     records_db.close()
 
     return grouped_dict
+
 
 async def create_summary(grouped_dict):
     summary = 'APEL-summary-job-message: v0.3\n'
@@ -227,7 +253,7 @@ async def run(config, client):
         last_report_time = await get_report_time(config)
         current_time = datetime.now()
 
-        if not (current_time-last_report_time).total_seconds() >= report_interval:
+        if not (current_time - last_report_time).total_seconds() >= report_interval:
             print('Too soon, do nothing for now!')
             await asyncio.sleep(run_interval)
             continue
@@ -246,7 +272,7 @@ async def run(config, client):
             grouped_dict = await create_summary_db(records_db)
             summary = await create_summary(grouped_dict)
             print(summary)
-            
+
             # report = await create_report(config, records)
             # await send_summary(summary)
             latest_report_time = datetime.now()
