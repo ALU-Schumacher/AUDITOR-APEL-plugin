@@ -11,7 +11,8 @@ from sqlite3 import Error
 from datetime import datetime
 import configparser
 import pytz
-
+import json
+import sys
 
 async def get_records(client):
     response = await client.get()
@@ -113,7 +114,7 @@ async def update_time_db(config, stop_time, report_time):
         print(e)
 
 
-async def create_records_db(records):
+async def create_records_db(config, records):
     # create_table_sql = ''' CREATE TABLE IF NOT EXISTS records (
     #                          year INTEGER NOT NULL,
     #                          month INTEGER NOT NULL,
@@ -132,6 +133,7 @@ async def create_records_db(records):
     #                        ); '''
 
     create_table_sql = ''' CREATE TABLE IF NOT EXISTS records (
+                             site TEXT NOT NULL,
                              year INTEGER NOT NULL,
                              month INTEGER NOT NULL,
                              user TEXT NOT NULL,
@@ -139,20 +141,33 @@ async def create_records_db(records):
                              cpucount INTEGER NOT NULL,
                              benchmarktype TEXT NOT NULL,
                              benchmarkvalue FLOAT NOT NULL,
-                             recordid TEXT NOT NULL,
+                             recordid TEXT UNIQUE NOT NULL,
                              runtime INTEGER NOT NULL,
                              starttime INTEGER NOT NULL,
                              stoptime INTEGER NOT NULL
                            ); '''
 
-    insert_record_sql = ''' INSERT INTO records(year, month, user, groupid, cpucount, benchmarktype, benchmarkvalue, recordid, runtime, starttime, stoptime)
-                            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '''
+    insert_record_sql = ''' INSERT INTO records(site, year, month, user, groupid, cpucount, benchmarktype, benchmarkvalue, recordid, runtime, starttime, stoptime)
+                            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '''
 
     conn = sqlite3.connect(':memory:')
     cur = conn.cursor()
     cur.execute(create_table_sql)
 
+    try:
+        site_list = json.loads(config['site'].get('site_list'))
+    except TypeError:
+        site_list = None
+
     for r in records:
+        if site_list is not None:
+            try:
+                site_id = site_list[r.site_id]
+            except KeyError:
+                print(f'No site name mapping defined for site {r.site_id}')
+                sys.exit(1)
+        else:
+            site_id = r.site_id
         year = r.stop_time.replace(tzinfo=pytz.utc).year
         month = r.stop_time.replace(tzinfo=pytz.utc).month
         for c in r.components:
@@ -164,6 +179,7 @@ async def create_records_db(records):
                         benchmark_type = s.name
 
         data_tuple = (
+            site_id,
             year,
             month,
             r.user_id,
@@ -187,7 +203,7 @@ async def create_records_db(records):
 async def create_summary_db(records_db):
     records_db.row_factory = sqlite3.Row
     cur = records_db.cursor()
-    group_sql = '''SELECT user, year, month, cpucount, COUNT(recordid) as jobcount, SUM(runtime) as runtime, MIN(stoptime) as min_stoptime, MAX(stoptime) as max_stoptime FROM records GROUP BY user, year, month, benchmarktype, benchmarkvalue, cpucount'''
+    group_sql = '''SELECT site, user, year, month, cpucount, COUNT(recordid) as jobcount, SUM(runtime) as runtime, MIN(stoptime) as min_stoptime, MAX(stoptime) as max_stoptime FROM records GROUP BY site, user, year, month, benchmarktype, benchmarkvalue, cpucount'''
     cur.execute(group_sql)
 
     grouped_dict = cur.fetchall()
@@ -202,7 +218,7 @@ async def create_summary(grouped_dict):
     summary = 'APEL-summary-job-message: v0.3\n'
 
     for entry in grouped_dict:
-        summary += f'Site: ???\n'
+        summary += f'Site: {entry["site"]}\n'
         summary += f'Month: {entry["month"]}\n'
         summary += f'Year: {entry["year"]}\n'
         summary += f'GlobalUserName: ???\n'
@@ -223,26 +239,6 @@ async def create_summary(grouped_dict):
         summary += '%%\n'
 
     return(summary)
-
-# async def create_report(config, records):
-#     site_name = config['site'].get('site_name', fallback=None)
-
-#     report = 'APEL-summary-job-message: v0.3\n'
-#     for r in records:
-#         print('try apel style')
-#         if site_name is not None:
-#             site_id = site_name
-#         else:
-#             site_id = r.site_id
-#         user_id = r.user_id
-#         report_part = f'''User: {user_id}
-# Site: {site_id}
-# %%\n'''
-#         report += report_part
-
-#     print(report)
-
-#     return 'nagut'
 
 
 async def run(config, client):
@@ -268,7 +264,7 @@ async def run(config, client):
             print(f'Latest stop time is {datetime.fromtimestamp(latest_stop_time, tz=pytz.utc)}')
 
             # maybe move this into one function create_summary(records)?
-            records_db = await create_records_db(records)
+            records_db = await create_records_db(config, records)
             grouped_dict = await create_summary_db(records_db)
             summary = await create_summary(grouped_dict)
             print(summary)
