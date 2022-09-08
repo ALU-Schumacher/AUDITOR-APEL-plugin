@@ -15,11 +15,13 @@ import json
 import sys
 import re
 
-async def lookup(s, lookups):
-    for key in lookups:
-        if re.search(key, s):
-            return lookups[key]
+
+async def regex_dict_lookup(term, dict):
+    for key in dict:
+        if re.search(key, term):
+            return dict[key]
     return None
+
 
 async def get_records(client):
     response = await client.get()
@@ -144,6 +146,7 @@ async def create_records_db(config, records):
                              vo TEXT NOT NULL,
                              vogroup TEXT NOT NULL,
                              vorole TEXT NOT NULL,
+                             infrastructure TEXT NOT NULL,
                              year INTEGER NOT NULL,
                              month INTEGER NOT NULL,
                              cpucount INTEGER NOT NULL,
@@ -151,12 +154,13 @@ async def create_records_db(config, records):
                              benchmarkvalue FLOAT NOT NULL,
                              recordid TEXT UNIQUE NOT NULL,
                              runtime INTEGER NOT NULL,
+                             normruntime INTEGER NOT NULL,
                              starttime INTEGER NOT NULL,
                              stoptime INTEGER NOT NULL
                            ); '''
 
-    insert_record_sql = ''' INSERT INTO records(site, submithost, vo, vogroup, vorole, year, month, cpucount, benchmarktype, benchmarkvalue, recordid, runtime, starttime, stoptime)
-                            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '''
+    insert_record_sql = ''' INSERT INTO records(site, submithost, vo, vogroup, vorole, infrastructure, year, month, cpucount, benchmarktype, benchmarkvalue, recordid, runtime, normruntime, starttime, stoptime)
+                            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '''
 
     conn = sqlite3.connect(':memory:')
     cur = conn.cursor()
@@ -169,6 +173,8 @@ async def create_records_db(config, records):
 
     vo_mapping = json.loads(config['uservo'].get('vo_mapping'))
     submit_host = config['site'].get('submit_host', fallback=None)
+    infrastructure = config['site'].get('infrastructure_type')
+    benchmark = config['site'].get('benchmark')
 
     for r in records:
         if site_name_mapping is not None:
@@ -179,16 +185,18 @@ async def create_records_db(config, records):
                 sys.exit(1)
         else:
             site_name = r.site_id
-        vo_info = await lookup(r.user_id, vo_mapping)
+        vo_info = await regex_dict_lookup(r.user_id, vo_mapping)
         year = r.stop_time.replace(tzinfo=pytz.utc).year
         month = r.stop_time.replace(tzinfo=pytz.utc).month
         for c in r.components:
             if c.name == 'Cores':
                 cpucount = c.amount
                 for s in c.scores:
-                    if s.name == 'HEPSPEC':
+                    if s.name == benchmark:
                         benchmark_value = s.factor
                         benchmark_type = s.name
+
+        norm_runtime = r.runtime*benchmark_value
 
         data_tuple = (
             site_name,
@@ -196,6 +204,7 @@ async def create_records_db(config, records):
             vo_info['vo'],
             vo_info['vogroup'],
             vo_info['vorole'],
+            infrastructure,
             year,
             month,
             cpucount,
@@ -203,6 +212,7 @@ async def create_records_db(config, records):
             benchmark_value,
             r.record_id,
             r.runtime,
+            norm_runtime,
             r.start_time.replace(tzinfo=pytz.utc).timestamp(),
             r.stop_time.replace(tzinfo=pytz.utc).timestamp()
         )
@@ -217,7 +227,7 @@ async def create_records_db(config, records):
 async def create_summary_db(records_db):
     records_db.row_factory = sqlite3.Row
     cur = records_db.cursor()
-    group_sql = '''SELECT site, submithost, vo, vogroup, vorole, year, month, cpucount, COUNT(recordid) as jobcount, SUM(runtime) as runtime, MIN(stoptime) as min_stoptime, MAX(stoptime) as max_stoptime FROM records GROUP BY site, vo, year, month, benchmarktype, benchmarkvalue, cpucount'''
+    group_sql = '''SELECT site, submithost, vo, vogroup, vorole, infrastructure, year, month, cpucount, COUNT(recordid) as jobcount, benchmarktype, benchmarkvalue, SUM(runtime) as runtime, SUM(normruntime) as norm_runtime, MIN(stoptime) as min_stoptime, MAX(stoptime) as max_stoptime FROM records GROUP BY site, vo, year, month, benchmarktype, benchmarkvalue, cpucount'''
     cur.execute(group_sql)
 
     grouped_dict = cur.fetchall()
@@ -240,19 +250,21 @@ async def create_summary(grouped_dict):
         summary += f'VORole: {entry["vorole"]}\n'
         if entry["submithost"] is not None:
             summary += f'SubmitHost: {entry["submithost"]}\n'
-        summary += f'Infrastructure: ???\n'
+        summary += f'Infrastructure: {entry["infrastructure"]}\n'
         summary += f'Processors: {entry["cpucount"]}\n'
         summary += f'NodeCount: ???\n'
+        summary += f'ServiceLevelType: {entry["benchmarktype"]}\n'
+        summary += f'ServiceLevel: {entry["benchmarkvalue"]}\n'
         summary += f'EarliestEndTime: {entry["min_stoptime"]}\n'
         summary += f'LatestEndTime: {entry["max_stoptime"]}\n'
         summary += f'WallDuration : {entry["runtime"]}\n'
         summary += f'CpuDuration: ???\n'
-        summary += f'NormalisedWallDuration: ???\n'
+        summary += f'NormalisedWallDuration: {entry["norm_runtime"]}\n'
         summary += f'NormalisedCpuDuration: ???\n'
         summary += f'NumberOfJobs: {entry["jobcount"]}\n'
         summary += '%%\n'
 
-    return(summary)
+    return summary
 
 
 async def run(config, client):
@@ -275,7 +287,7 @@ async def run(config, client):
             print(f'Getting records since {start_time}')
             records = await get_records_since(client, start_time)
             latest_stop_time = records[-1].stop_time.replace(tzinfo=pytz.utc).timestamp()
-            print(f'Latest stop time is {datetime.fromtimestamp(latest_stop_time, tz=pytz.utc)}')
+            logging.info(f'Latest stop time is {datetime.fromtimestamp(latest_stop_time, tz=pytz.utc)}')
 
             # maybe move this into one function create_summary(records)?
             records_db = await create_records_db(config, records)
