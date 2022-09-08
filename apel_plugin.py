@@ -53,7 +53,7 @@ async def create_time_db(time_db_path):
 
 
 async def get_start_time(config):
-    time_db_path = config['paths']['time_db_path']
+    time_db_path = config['paths'].get('time_db_path')
 
     try:
         conn = sqlite3.connect(
@@ -72,7 +72,7 @@ async def get_start_time(config):
 
 
 async def get_report_time(config):
-    time_db_path = config['paths']['time_db_path']
+    time_db_path = config['paths'].get('time_db_path')
 
     if Path(time_db_path).is_file():
         try:
@@ -95,7 +95,7 @@ async def get_report_time(config):
 
 
 async def update_time_db(config, stop_time, report_time):
-    time_db_path = config['paths']['time_db_path']
+    time_db_path = config['paths'].get('time_db_path')
 
     update_sql = ''' UPDATE times
                      SET last_end_time = ? ,
@@ -134,6 +134,7 @@ async def create_records_db(config, records):
 
     create_table_sql = ''' CREATE TABLE IF NOT EXISTS records (
                              site TEXT NOT NULL,
+                             submithost TEXT,
                              year INTEGER NOT NULL,
                              month INTEGER NOT NULL,
                              user TEXT NOT NULL,
@@ -147,27 +148,29 @@ async def create_records_db(config, records):
                              stoptime INTEGER NOT NULL
                            ); '''
 
-    insert_record_sql = ''' INSERT INTO records(site, year, month, user, groupid, cpucount, benchmarktype, benchmarkvalue, recordid, runtime, starttime, stoptime)
-                            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '''
+    insert_record_sql = ''' INSERT INTO records(site, submithost, year, month, user, groupid, cpucount, benchmarktype, benchmarkvalue, recordid, runtime, starttime, stoptime)
+                            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '''
 
     conn = sqlite3.connect(':memory:')
     cur = conn.cursor()
     cur.execute(create_table_sql)
 
     try:
-        site_list = json.loads(config['site'].get('site_list'))
+        site_name_mapping = json.loads(config['site'].get('site_name_mapping'))
     except TypeError:
-        site_list = None
+        site_name_mapping = None
+
+    submit_host = config['site'].get('submit_host', fallback=None)
 
     for r in records:
-        if site_list is not None:
+        if site_name_mapping is not None:
             try:
-                site_id = site_list[r.site_id]
+                site_name = site_name_mapping[r.site_id]
             except KeyError:
                 print(f'No site name mapping defined for site {r.site_id}')
                 sys.exit(1)
         else:
-            site_id = r.site_id
+            site_name = r.site_id
         year = r.stop_time.replace(tzinfo=pytz.utc).year
         month = r.stop_time.replace(tzinfo=pytz.utc).month
         for c in r.components:
@@ -179,7 +182,8 @@ async def create_records_db(config, records):
                         benchmark_type = s.name
 
         data_tuple = (
-            site_id,
+            site_name,
+            submit_host,
             year,
             month,
             r.user_id,
@@ -203,7 +207,7 @@ async def create_records_db(config, records):
 async def create_summary_db(records_db):
     records_db.row_factory = sqlite3.Row
     cur = records_db.cursor()
-    group_sql = '''SELECT site, user, year, month, cpucount, COUNT(recordid) as jobcount, SUM(runtime) as runtime, MIN(stoptime) as min_stoptime, MAX(stoptime) as max_stoptime FROM records GROUP BY site, user, year, month, benchmarktype, benchmarkvalue, cpucount'''
+    group_sql = '''SELECT site, submithost, user, year, month, cpucount, COUNT(recordid) as jobcount, SUM(runtime) as runtime, MIN(stoptime) as min_stoptime, MAX(stoptime) as max_stoptime FROM records GROUP BY site, user, year, month, benchmarktype, benchmarkvalue, cpucount'''
     cur.execute(group_sql)
 
     grouped_dict = cur.fetchall()
@@ -225,7 +229,8 @@ async def create_summary(grouped_dict):
         summary += f'VO: ???\n'
         summary += f'VOGroup: ???\n'
         summary += f'VORole: ???\n'
-        summary += f'SubmitHost: ???\n'
+        if entry["submithost"] is not None:
+            summary += f'SubmitHost: {entry["submithost"]}\n'
         summary += f'Infrastructure: ???\n'
         summary += f'Processors: {entry["cpucount"]}\n'
         summary += f'NodeCount: ???\n'
@@ -268,9 +273,8 @@ async def run(config, client):
             grouped_dict = await create_summary_db(records_db)
             summary = await create_summary(grouped_dict)
             print(summary)
-
-            # report = await create_report(config, records)
             # await send_summary(summary)
+
             latest_report_time = datetime.now()
             await update_time_db(config, latest_stop_time, latest_report_time)
         except IndexError:
@@ -285,7 +289,7 @@ def main():
     config = configparser.ConfigParser()
     config.read('apel_plugin.cfg')
 
-    auditor_ip = config['auditor']['auditor_ip']
+    auditor_ip = config['auditor'].get('auditor_ip')
     auditor_port = config['auditor'].getint('auditor_port')
 
     builder = AuditorClientBuilder()
