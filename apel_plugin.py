@@ -13,6 +13,13 @@ import configparser
 import pytz
 import json
 import sys
+import re
+
+async def lookup(s, lookups):
+    for key in lookups:
+        if re.search(key, s):
+            return lookups[key]
+    return None
 
 async def get_records(client):
     response = await client.get()
@@ -118,7 +125,6 @@ async def create_records_db(config, records):
     # create_table_sql = ''' CREATE TABLE IF NOT EXISTS records (
     #                          year INTEGER NOT NULL,
     #                          month INTEGER NOT NULL,
-    #                          user TEXT NOT NULL.
     #                          vo TEXT NOT NULL,
     #                          endpoint TEXT NOT NULL,
     #                          nodecount INTEGER NOT NULL,
@@ -135,10 +141,11 @@ async def create_records_db(config, records):
     create_table_sql = ''' CREATE TABLE IF NOT EXISTS records (
                              site TEXT NOT NULL,
                              submithost TEXT,
+                             vo TEXT NOT NULL,
+                             vogroup TEXT NOT NULL,
+                             vorole TEXT NOT NULL,
                              year INTEGER NOT NULL,
                              month INTEGER NOT NULL,
-                             user TEXT NOT NULL,
-                             groupid TEXT NOT NULL,
                              cpucount INTEGER NOT NULL,
                              benchmarktype TEXT NOT NULL,
                              benchmarkvalue FLOAT NOT NULL,
@@ -148,8 +155,8 @@ async def create_records_db(config, records):
                              stoptime INTEGER NOT NULL
                            ); '''
 
-    insert_record_sql = ''' INSERT INTO records(site, submithost, year, month, user, groupid, cpucount, benchmarktype, benchmarkvalue, recordid, runtime, starttime, stoptime)
-                            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '''
+    insert_record_sql = ''' INSERT INTO records(site, submithost, vo, vogroup, vorole, year, month, cpucount, benchmarktype, benchmarkvalue, recordid, runtime, starttime, stoptime)
+                            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '''
 
     conn = sqlite3.connect(':memory:')
     cur = conn.cursor()
@@ -160,6 +167,7 @@ async def create_records_db(config, records):
     except TypeError:
         site_name_mapping = None
 
+    vo_mapping = json.loads(config['uservo'].get('vo_mapping'))
     submit_host = config['site'].get('submit_host', fallback=None)
 
     for r in records:
@@ -171,6 +179,7 @@ async def create_records_db(config, records):
                 sys.exit(1)
         else:
             site_name = r.site_id
+        vo_info = await lookup(r.user_id, vo_mapping)
         year = r.stop_time.replace(tzinfo=pytz.utc).year
         month = r.stop_time.replace(tzinfo=pytz.utc).month
         for c in r.components:
@@ -184,10 +193,11 @@ async def create_records_db(config, records):
         data_tuple = (
             site_name,
             submit_host,
+            vo_info['vo'],
+            vo_info['vogroup'],
+            vo_info['vorole'],
             year,
             month,
-            r.user_id,
-            r.group_id,
             cpucount,
             benchmark_type,
             benchmark_value,
@@ -207,7 +217,7 @@ async def create_records_db(config, records):
 async def create_summary_db(records_db):
     records_db.row_factory = sqlite3.Row
     cur = records_db.cursor()
-    group_sql = '''SELECT site, submithost, user, year, month, cpucount, COUNT(recordid) as jobcount, SUM(runtime) as runtime, MIN(stoptime) as min_stoptime, MAX(stoptime) as max_stoptime FROM records GROUP BY site, user, year, month, benchmarktype, benchmarkvalue, cpucount'''
+    group_sql = '''SELECT site, submithost, vo, vogroup, vorole, year, month, cpucount, COUNT(recordid) as jobcount, SUM(runtime) as runtime, MIN(stoptime) as min_stoptime, MAX(stoptime) as max_stoptime FROM records GROUP BY site, vo, year, month, benchmarktype, benchmarkvalue, cpucount'''
     cur.execute(group_sql)
 
     grouped_dict = cur.fetchall()
@@ -225,10 +235,9 @@ async def create_summary(grouped_dict):
         summary += f'Site: {entry["site"]}\n'
         summary += f'Month: {entry["month"]}\n'
         summary += f'Year: {entry["year"]}\n'
-        summary += f'GlobalUserName: ???\n'
-        summary += f'VO: ???\n'
-        summary += f'VOGroup: ???\n'
-        summary += f'VORole: ???\n'
+        summary += f'VO: {entry["vo"]}\n'
+        summary += f'VOGroup: {entry["vogroup"]}\n'
+        summary += f'VORole: {entry["vorole"]}\n'
         if entry["submithost"] is not None:
             summary += f'SubmitHost: {entry["submithost"]}\n'
         summary += f'Infrastructure: ???\n'
