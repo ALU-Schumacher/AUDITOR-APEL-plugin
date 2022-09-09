@@ -174,7 +174,9 @@ async def create_records_db(config, records):
     vo_mapping = json.loads(config['uservo'].get('vo_mapping'))
     submit_host = config['site'].get('submit_host', fallback=None)
     infrastructure = config['site'].get('infrastructure_type')
-    benchmark = config['site'].get('benchmark')
+    benchmark_type = config['site'].get('benchmark_type')
+    benchmark_name = config['auditor'].get('benchmark_name')
+    cores_name = config['auditor'].get('cores_name')
 
     for r in records:
         if site_name_mapping is not None:
@@ -189,12 +191,11 @@ async def create_records_db(config, records):
         year = r.stop_time.replace(tzinfo=pytz.utc).year
         month = r.stop_time.replace(tzinfo=pytz.utc).month
         for c in r.components:
-            if c.name == 'Cores':
+            if c.name == cores_name:
                 cpucount = c.amount
                 for s in c.scores:
-                    if s.name == benchmark:
+                    if s.name == benchmark_name:
                         benchmark_value = s.factor
-                        benchmark_type = s.name
 
         norm_runtime = r.runtime*benchmark_value
 
