@@ -19,7 +19,8 @@ async def regex_dict_lookup(term, dict):
     for key in dict:
         if re.search(key, term):
             return dict[key]
-    return None
+    logging.critical(f"Search term {term} not be matched in {dict.keys()}")
+    sys.exit(1)
 
 
 async def get_records(client):
@@ -68,7 +69,7 @@ async def create_time_db(time_db_path):
         conn.close()
         return ini_time
     except Error as e:
-        print(e)
+        logging.critical(e)
 
 
 async def get_start_time(config):
@@ -87,7 +88,7 @@ async def get_start_time(config):
         conn.close()
         return start_time
     except Error as e:
-        print(e)
+        logging.critical(e)
 
 
 async def get_report_time(config):
@@ -107,7 +108,7 @@ async def get_report_time(config):
             conn.close()
             return report_time
         except Error as e:
-            print(e)
+            logging.critical(e)
     else:
         report_time = await create_time_db(time_db_path)
         return report_time
@@ -132,7 +133,7 @@ async def update_time_db(config, stop_time, report_time):
         cur.close()
         conn.close()
     except Error as e:
-        print(e)
+        logging.critical(e)
 
 
 async def create_records_db(config, records):
@@ -183,10 +184,12 @@ async def create_records_db(config, records):
                             ?, ?, ?, ?
                         )
                         """
-
-    conn = sqlite3.connect(":memory:")
-    cur = conn.cursor()
-    cur.execute(create_table_sql)
+    try:
+        conn = sqlite3.connect(":memory:")
+        cur = conn.cursor()
+        cur.execute(create_table_sql)
+    except Error as e:
+        logging.critical(e)
 
     try:
         site_name_mapping = json.loads(config["site"].get("site_name_mapping"))
@@ -205,7 +208,9 @@ async def create_records_db(config, records):
             try:
                 site_name = site_name_mapping[r.site_id]
             except KeyError:
-                print(f"No site name mapping defined for site {r.site_id}")
+                logging.critical(
+                    f"No site name mapping defined for site {r.site_id}"
+                )
                 sys.exit(1)
         else:
             site_name = r.site_id
@@ -239,10 +244,16 @@ async def create_records_db(config, records):
             r.start_time.replace(tzinfo=pytz.utc).timestamp(),
             r.stop_time.replace(tzinfo=pytz.utc).timestamp(),
         )
-        cur.execute(insert_record_sql, data_tuple)
+        try:
+            cur.execute(insert_record_sql, data_tuple)
+        except Error as e:
+            logging.critical(e)
 
-    conn.commit()
-    cur.close()
+    try:
+        conn.commit()
+        cur.close()
+    except Error as e:
+        logging.critical(e)
 
     return conn
 
@@ -324,25 +335,25 @@ async def run(config, client):
         time_since_report = (current_time - last_report_time).total_seconds()
 
         if not time_since_report >= report_interval:
-            print("Too soon, do nothing for now!")
+            logging.info("Not enough time since last report")
             await asyncio.sleep(run_interval)
             continue
         else:
-            print("Enough time passed since last report, do it again!")
+            logging.info("Enough time since last report, create new report")
 
         try:
             start_time = await get_start_time(config)
-            print(f"Getting records since {start_time}")
+            logging.info(f"Getting records since {start_time}")
             records = await get_records_since(client, start_time)
 
             latest_stop_time = records[-1].stop_time.replace(tzinfo=pytz.utc)
-            logging.info(f"Latest stop time is {latest_stop_time}")
+            logging.debug(f"Latest stop time is {latest_stop_time}")
 
             # maybe move this into one function create_summary(records)?
             records_db = await create_records_db(config, records)
             grouped_dict = await create_summary_db(records_db)
             summary = await create_summary(grouped_dict)
-            print(summary)
+            logging.debug(summary)
             # await send_summary(summary)
 
             latest_report_time = datetime.now()
@@ -350,13 +361,18 @@ async def run(config, client):
                 config, latest_stop_time.timestamp(), latest_report_time
             )
         except IndexError:
-            print("No new records, do nothing for now!")
+            logging.info("No new records, do nothing for now")
 
         await asyncio.sleep(run_interval)
 
 
 def main():
-    logging.basicConfig(level=logging.DEBUG)
+    FORMAT = (
+        "%(asctime)s %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s"
+    )
+    logging.basicConfig(
+        level=logging.DEBUG, format=FORMAT, datefmt="%Y-%m-%d %H:%M:%S"
+    )
 
     config = configparser.ConfigParser()
     config.read("apel_plugin.cfg")
@@ -371,9 +387,9 @@ def main():
     try:
         asyncio.run(run(config, client))
     except KeyboardInterrupt:
-        print("User abort")
+        logging.critical("User abort")
     finally:
-        print("APEL plugin stopped")
+        logging.critical("APEL plugin stopped")
 
 
 if __name__ == "__main__":
