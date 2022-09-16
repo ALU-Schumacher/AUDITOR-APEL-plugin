@@ -139,7 +139,7 @@ async def create_records_db(config, records):
     create_table_sql = """
                        CREATE TABLE IF NOT EXISTS records(
                            site TEXT NOT NULL,
-                           submithost TEXT,
+                           submithost TEXT NOT NULL,
                            vo TEXT NOT NULL,
                            vogroup TEXT NOT NULL,
                            vorole TEXT NOT NULL,
@@ -194,7 +194,7 @@ async def create_records_db(config, records):
         site_name_mapping = None
 
     vo_mapping = json.loads(config["uservo"].get("vo_mapping"))
-    submit_host = config["site"].get("submit_host", fallback=None)
+    submit_host = config["site"].get("submit_host")
     infrastructure = config["site"].get("infrastructure_type")
     benchmark_type = config["site"].get("benchmark_type")
     benchmark_name = config["auditor"].get("benchmark_name")
@@ -296,8 +296,7 @@ async def create_summary(grouped_dict):
         summary += f"VO: {entry['vo']}\n"
         summary += f"VOGroup: {entry['vogroup']}\n"
         summary += f"VORole: {entry['vorole']}\n"
-        if entry["submithost"] is not None:
-            summary += f"SubmitHost: {entry['submithost']}\n"
+        summary += f"SubmitHost: {entry['submithost']}\n"
         summary += f"Infrastructure: {entry['infrastructure']}\n"
         summary += f"Processors: {entry['cpucount']}\n"
         summary += "NodeCount: ???\n"
