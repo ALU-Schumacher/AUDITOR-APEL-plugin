@@ -367,12 +367,15 @@ async def run(config, client):
 
 
 def main():
-    FORMAT = (
-        "%(asctime)s %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s"
-    )
+    FORMAT = "[%(asctime)s] %(levelname)-8s %(message)s"
     logging.basicConfig(
-        level=logging.DEBUG, format=FORMAT, datefmt="%Y-%m-%d %H:%M:%S"
+        # filename="apel_plugin.log",
+        encoding="utf-8",
+        level=logging.DEBUG,
+        format=FORMAT,
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
+    logging.getLogger("asyncio").setLevel(logging.WARNING)
 
     config = configparser.ConfigParser()
     config.read("apel_plugin.cfg")
