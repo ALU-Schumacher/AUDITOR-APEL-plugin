@@ -1,3 +1,5 @@
 *~
 venv/
 *log
+.coveragerc
+__pycache__/
