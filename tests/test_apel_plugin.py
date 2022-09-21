@@ -1,5 +1,5 @@
 import pytest
-import apel_plugin
+import apel_plugin.apel_plugin as apel_plugin
 
 
 class TestAPELPlugin(object):
