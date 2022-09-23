@@ -23,3 +23,7 @@ where = ["src"]
 source = ["src"]
 omit = ["*__init__.py"]
 branch = true
+
+[tool.black]
+line-length = 79
+include = '\.pyi?$'

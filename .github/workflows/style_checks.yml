@@ -17,9 +17,9 @@ jobs:
           pip install --upgrade pip
           pip install -e .
       - name: Run flake8
-        run: flake8 apel_plugin tests
+        run: flake8 src tests
       - name: Run black
-        run: black apel_plugin tests --diff --line-length 79
+        run: black --diff .
         
 
 
