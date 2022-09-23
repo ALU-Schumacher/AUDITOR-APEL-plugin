@@ -6,15 +6,21 @@ build-backend = "setuptools.build_meta"
 name = "apel_plugin"
 version = "0.1.0"
 dependencies = [
-	     "pytest",
-	     "pytest-asyncio",
-	     "pytest-cov",
 	     "python-auditor==0.0.6",
-	     "black",
-	     "flake8",
 	     "pytz==2022.2.1",
 ]
 requires-python = ">=3.9"
+
+[project.optional-dependencies]
+style = [
+       "black",
+       "flake8"
+]
+tests = [
+      "pytest",
+      "pytest-asyncio",
+      "pytest-cov"
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
