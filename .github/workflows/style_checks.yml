@@ -15,7 +15,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -e .[style]
+          pip install .[style]
       - name: Run flake8
         run: flake8 src tests
       - name: Run black
