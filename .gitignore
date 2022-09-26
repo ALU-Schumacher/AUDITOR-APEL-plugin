@@ -4,3 +4,4 @@ venv/
 __pycache__/
 .coveragerc_local
 *egg-info/
+*.db
