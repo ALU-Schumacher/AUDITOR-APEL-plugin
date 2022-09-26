@@ -19,18 +19,8 @@ async def regex_dict_lookup(term, dict):
     for key in dict:
         if re.search(key, term):
             return dict[key]
-    logging.critical(f"Search term {term} not be matched in {dict.keys()}")
+    logging.critical(f"Search term {term} not matched in {dict.keys()}")
     sys.exit(1)
-
-
-async def get_records(client):
-    response = await client.get()
-    return response
-
-
-async def get_records_since(client, start_time):
-    response = await client.get_stopped_since(start_time)
-    return response
 
 
 async def create_time_db(time_db_path):
@@ -344,7 +334,7 @@ async def run(config, client):
         try:
             start_time = await get_start_time(config)
             logging.info(f"Getting records since {start_time}")
-            records = await get_records_since(client, start_time)
+            records = await client.get_stopped_since(start_time)
 
             latest_stop_time = records[-1].stop_time.replace(tzinfo=pytz.utc)
             logging.debug(f"Latest stop time is {latest_stop_time}")

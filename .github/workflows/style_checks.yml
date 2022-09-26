@@ -20,7 +20,3 @@ jobs:
         run: flake8 src tests
       - name: Run black
         run: black --diff .
-        
-
-
-  
