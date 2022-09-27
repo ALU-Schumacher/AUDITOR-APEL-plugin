@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# SPDX-FileCopyrightText: © 2022 Dirk Sammel <dirk.sammel@gmail.com>
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+
 from __future__ import annotations
 import logging
 import asyncio
