@@ -26,6 +26,23 @@ async def regex_dict_lookup(term, dict):
     sys.exit(1)
 
 
+async def get_time_db(config):
+    time_db_path = config["paths"].get("time_db_path")
+
+    try:
+        if Path(time_db_path).is_file():
+            conn = sqlite3.connect(
+                time_db_path,
+                detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+            )
+        else:
+            conn = await create_time_db(time_db_path)
+    except Error as e:
+        logging.critical(e)
+
+    return conn
+
+
 async def create_time_db(time_db_path):
     create_table_sql = """
                        CREATE TABLE IF NOT EXISTS times(
@@ -59,72 +76,46 @@ async def create_time_db(time_db_path):
         cur.execute(insert_sql, data_tuple)
         conn.commit()
         cur.close()
-        conn.close()
-        return ini_time
+        return conn
     except Error as e:
         logging.critical(e)
 
 
-async def get_start_time(config):
-    time_db_path = config["paths"].get("time_db_path")
-
+async def get_start_time(conn):
     try:
-        conn = sqlite3.connect(
-            time_db_path,
-            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-        )
         cur = conn.cursor()
         cur.row_factory = lambda cursor, row: row[0]
         cur.execute("SELECT last_end_time FROM times")
         start_time = datetime.fromtimestamp(cur.fetchall()[0], tz=pytz.utc)
         cur.close()
-        conn.close()
         return start_time
     except Error as e:
         logging.critical(e)
 
 
-async def get_report_time(config):
-    time_db_path = config["paths"].get("time_db_path")
-
-    if Path(time_db_path).is_file():
-        try:
-            conn = sqlite3.connect(
-                time_db_path,
-                detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-            )
-            cur = conn.cursor()
-            cur.row_factory = lambda cursor, row: row[0]
-            cur.execute("SELECT last_report_time FROM times")
-            report_time = cur.fetchall()[0]
-            cur.close()
-            conn.close()
-            return report_time
-        except Error as e:
-            logging.critical(e)
-    else:
-        report_time = await create_time_db(time_db_path)
+async def get_report_time(conn):
+    try:
+        cur = conn.cursor()
+        cur.row_factory = lambda cursor, row: row[0]
+        cur.execute("SELECT last_report_time FROM times")
+        report_time = cur.fetchall()[0]
+        cur.close()
         return report_time
+    except Error as e:
+        logging.critical(e)
 
 
-async def update_time_db(config, stop_time, report_time):
-    time_db_path = config["paths"].get("time_db_path")
-
+async def update_time_db(conn, stop_time, report_time):
     update_sql = """
                  UPDATE times
                  SET last_end_time = ?,
                      last_report_time = ?
                  """
     try:
-        conn = sqlite3.connect(
-            time_db_path,
-            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-        )
         cur = conn.cursor()
         cur.execute(update_sql, (stop_time, report_time))
         conn.commit()
         cur.close()
-        conn.close()
     except Error as e:
         logging.critical(e)
 
@@ -323,19 +314,21 @@ async def run(config, client):
     report_interval = config["intervals"].getint("report_interval")
 
     while True:
-        last_report_time = await get_report_time(config)
+        time_db_conn = await get_time_db(config)
+        last_report_time = await get_report_time(time_db_conn)
         current_time = datetime.now()
         time_since_report = (current_time - last_report_time).total_seconds()
 
         if not time_since_report >= report_interval:
             logging.info("Not enough time since last report")
+            time_db_conn.close()
             await asyncio.sleep(run_interval)
             continue
         else:
             logging.info("Enough time since last report, create new report")
 
         try:
-            start_time = await get_start_time(config)
+            start_time = await get_start_time(time_db_conn)
             logging.info(f"Getting records since {start_time}")
             records = await client.get_stopped_since(start_time)
 
@@ -351,10 +344,11 @@ async def run(config, client):
 
             latest_report_time = datetime.now()
             await update_time_db(
-                config, latest_stop_time.timestamp(), latest_report_time
+                time_db_conn, latest_stop_time.timestamp(), latest_report_time
             )
         except IndexError:
             logging.info("No new records, do nothing for now")
+            time_db_conn.close()
 
         await asyncio.sleep(run_interval)
 
