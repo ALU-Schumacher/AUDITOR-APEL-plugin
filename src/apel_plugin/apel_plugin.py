@@ -9,7 +9,8 @@ import asyncio
 from pyauditor import AuditorClientBuilder
 from pathlib import Path
 import sqlite3
-from sqlite3 import Error
+import aiosqlite
+from aiosqlite import Error
 from datetime import datetime
 import configparser
 import pytz
@@ -31,7 +32,7 @@ async def get_time_db(config):
 
     try:
         if Path(time_db_path).is_file():
-            conn = sqlite3.connect(
+            conn = await aiosqlite.connect(
                 time_db_path,
                 detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
             )
@@ -67,15 +68,15 @@ async def create_time_db(time_db_path):
     data_tuple = ("arex/jura/apel:EGI", 0, ini_time)
 
     try:
-        conn = sqlite3.connect(
+        conn = await aiosqlite.connect(
             time_db_path,
             detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
         )
-        cur = conn.cursor()
-        cur.execute(create_table_sql)
-        cur.execute(insert_sql, data_tuple)
-        conn.commit()
-        cur.close()
+        cur = await conn.cursor()
+        await cur.execute(create_table_sql)
+        await cur.execute(insert_sql, data_tuple)
+        await conn.commit()
+        await cur.close()
         return conn
     except Error as e:
         logging.critical(e)
@@ -83,11 +84,12 @@ async def create_time_db(time_db_path):
 
 async def get_start_time(conn):
     try:
-        cur = conn.cursor()
+        cur = await conn.cursor()
         cur.row_factory = lambda cursor, row: row[0]
-        cur.execute("SELECT last_end_time FROM times")
-        start_time = datetime.fromtimestamp(cur.fetchall()[0], tz=pytz.utc)
-        cur.close()
+        await cur.execute("SELECT last_end_time FROM times")
+        start_time_row = await cur.fetchall()
+        start_time = datetime.fromtimestamp(start_time_row[0][0], tz=pytz.utc)
+        await cur.close()
         return start_time
     except Error as e:
         logging.critical(e)
@@ -95,11 +97,12 @@ async def get_start_time(conn):
 
 async def get_report_time(conn):
     try:
-        cur = conn.cursor()
+        cur = await conn.cursor()
         cur.row_factory = lambda cursor, row: row[0]
-        cur.execute("SELECT last_report_time FROM times")
-        report_time = cur.fetchall()[0]
-        cur.close()
+        await cur.execute("SELECT last_report_time FROM times")
+        report_time_row = await cur.fetchall()
+        report_time = report_time_row[0][0]
+        await cur.close()
         return report_time
     except Error as e:
         logging.critical(e)
@@ -112,10 +115,10 @@ async def update_time_db(conn, stop_time, report_time):
                      last_report_time = ?
                  """
     try:
-        cur = conn.cursor()
-        cur.execute(update_sql, (stop_time, report_time))
-        conn.commit()
-        cur.close()
+        cur = await conn.cursor()
+        await cur.execute(update_sql, (stop_time, report_time))
+        await conn.commit()
+        await cur.close()
     except Error as e:
         logging.critical(e)
 
@@ -169,9 +172,9 @@ async def create_records_db(config, records):
                         )
                         """
     try:
-        conn = sqlite3.connect(":memory:")
-        cur = conn.cursor()
-        cur.execute(create_table_sql)
+        conn = await aiosqlite.connect(":memory:")
+        cur = await conn.cursor()
+        await cur.execute(create_table_sql)
     except Error as e:
         logging.critical(e)
 
@@ -229,13 +232,13 @@ async def create_records_db(config, records):
             r.stop_time.replace(tzinfo=pytz.utc).timestamp(),
         )
         try:
-            cur.execute(insert_record_sql, data_tuple)
+            await cur.execute(insert_record_sql, data_tuple)
         except Error as e:
             logging.critical(e)
 
     try:
-        conn.commit()
-        cur.close()
+        await conn.commit()
+        await cur.close()
     except Error as e:
         logging.critical(e)
 
@@ -243,8 +246,8 @@ async def create_records_db(config, records):
 
 
 async def create_summary_db(records_db):
-    records_db.row_factory = sqlite3.Row
-    cur = records_db.cursor()
+    records_db.row_factory = aiosqlite.Row
+    cur = await records_db.cursor()
     group_sql = """
                 SELECT site,
                        submithost,
@@ -271,12 +274,12 @@ async def create_summary_db(records_db):
                          benchmarkvalue,
                          cpucount
                 """
-    cur.execute(group_sql)
+    await cur.execute(group_sql)
 
-    grouped_dict = cur.fetchall()
+    grouped_dict = await cur.fetchall()
 
-    cur.close()
-    records_db.close()
+    await cur.close()
+    await records_db.close()
 
     return grouped_dict
 
@@ -321,7 +324,7 @@ async def run(config, client):
 
         if not time_since_report >= report_interval:
             logging.info("Not enough time since last report")
-            time_db_conn.close()
+            await time_db_conn.close()
             await asyncio.sleep(run_interval)
             continue
         else:
@@ -348,8 +351,8 @@ async def run(config, client):
             )
         except IndexError:
             logging.info("No new records, do nothing for now")
-            time_db_conn.close()
 
+        await time_db_conn.close()
         await asyncio.sleep(run_interval)
 
 
@@ -363,6 +366,7 @@ def main():
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     logging.getLogger("asyncio").setLevel(logging.WARNING)
+    logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
     config = configparser.ConfigParser()
     config.read("apel_plugin.cfg")
