@@ -17,6 +17,7 @@ import pytz
 import json
 import sys
 import re
+import requests
 
 
 async def regex_dict_lookup(term, dict):
@@ -312,6 +313,20 @@ async def create_summary(grouped_dict):
     return summary
 
 
+async def get_token(config):
+    auth_url = config["authentication"].get("auth_url")
+    client_cert = config["authentication"].get("client_cert")
+    client_key = config["authentication"].get("client_key")
+    # ca_path = config["authentication"].get("ca_path")
+
+    response = requests.get(
+        auth_url, cert=(client_cert, client_key), verify=False
+    )
+    token = response.json()["token"]
+
+    return token
+
+
 async def run(config, client):
     run_interval = config["intervals"].getint("run_interval")
     report_interval = config["intervals"].getint("report_interval")
@@ -343,6 +358,8 @@ async def run(config, client):
             grouped_dict = await create_summary_db(records_db)
             summary = await create_summary(grouped_dict)
             logging.debug(summary)
+            token = await get_token(config)
+            logging.debug(token)
             # await send_summary(summary)
 
             latest_report_time = datetime.now()
@@ -367,6 +384,7 @@ def main():
     )
     logging.getLogger("asyncio").setLevel(logging.WARNING)
     logging.getLogger("aiosqlite").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     config = configparser.ConfigParser()
     config.read("apel_plugin.cfg")
