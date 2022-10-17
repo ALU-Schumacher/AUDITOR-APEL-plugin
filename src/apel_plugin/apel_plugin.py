@@ -21,6 +21,7 @@ import requests
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import pkcs7
+import base64
 
 
 async def regex_dict_lookup(term, dict):
@@ -387,6 +388,8 @@ async def run(config, client):
             logging.debug(token)
             signed_summary = await sign_msg(config, summary)
             logging.debug(signed_summary)
+            encoded_summary = base64.b64encode(signed_summary).decode("utf-8")
+            logging.debug(encoded_summary)
 
             latest_report_time = datetime.now()
             await update_time_db(
