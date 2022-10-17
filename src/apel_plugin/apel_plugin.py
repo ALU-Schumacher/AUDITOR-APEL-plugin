@@ -18,6 +18,9 @@ import json
 import sys
 import re
 import requests
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.serialization import pkcs7
 
 
 async def regex_dict_lookup(term, dict):
@@ -327,6 +330,28 @@ async def get_token(config):
     return token
 
 
+async def sign_msg(config, msg):
+    client_cert = config["authentication"].get("client_cert")
+    client_key = config["authentication"].get("client_key")
+
+    with open(client_cert, "rb") as cc:
+        cert = x509.load_pem_x509_certificate(cc.read())
+
+    with open(client_key, "rb") as ck:
+        key = serialization.load_pem_private_key(ck.read(), None)
+
+    options = [pkcs7.PKCS7Options.DetachedSignature, pkcs7.PKCS7Options.Text]
+
+    signed_msg = (
+        pkcs7.PKCS7SignatureBuilder()
+        .set_data(bytes(msg, "utf-8"))
+        .add_signer(cert, key, hashes.SHA256())
+        .sign(serialization.Encoding.SMIME, options)
+    )
+
+    return signed_msg
+
+
 async def run(config, client):
     run_interval = config["intervals"].getint("run_interval")
     report_interval = config["intervals"].getint("report_interval")
@@ -360,7 +385,8 @@ async def run(config, client):
             logging.debug(summary)
             token = await get_token(config)
             logging.debug(token)
-            # await send_summary(summary)
+            signed_summary = await sign_msg(config, summary)
+            logging.debug(signed_summary)
 
             latest_report_time = datetime.now()
             await update_time_db(
