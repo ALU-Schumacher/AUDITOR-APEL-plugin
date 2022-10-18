@@ -353,6 +353,15 @@ async def sign_msg(config, msg):
     return signed_msg
 
 
+async def build_payload(msg):
+    current_time = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    empaid = f"{current_time[:8]}/{current_time}"
+
+    payload = {"attributes": {"empaid": empaid}, "data": msg}
+
+    return payload
+
+
 async def run(config, client):
     run_interval = config["intervals"].getint("run_interval")
     report_interval = config["intervals"].getint("report_interval")
@@ -390,6 +399,8 @@ async def run(config, client):
             logging.debug(signed_summary)
             encoded_summary = base64.b64encode(signed_summary).decode("utf-8")
             logging.debug(encoded_summary)
+            payload_summary = await build_payload(encoded_summary)
+            logging.debug(payload_summary)
 
             latest_report_time = datetime.now()
             await update_time_db(
