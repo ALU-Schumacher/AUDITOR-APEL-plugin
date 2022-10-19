@@ -140,8 +140,6 @@ async def create_records_db(config, records):
                            year INTEGER NOT NULL,
                            month INTEGER NOT NULL,
                            cpucount INTEGER NOT NULL,
-                           benchmarktype TEXT NOT NULL,
-                           benchmarkvalue FLOAT NOT NULL,
                            recordid TEXT UNIQUE NOT NULL,
                            runtime INTEGER NOT NULL,
                            normruntime INTEGER NOT NULL,
@@ -161,8 +159,6 @@ async def create_records_db(config, records):
                             year,
                             month,
                             cpucount,
-                            benchmarktype,
-                            benchmarkvalue,
                             recordid,
                             runtime,
                             normruntime,
@@ -173,7 +169,7 @@ async def create_records_db(config, records):
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
-                            ?, ?, ?, ?
+                            ?, ?
                         )
                         """
     try:
@@ -191,7 +187,6 @@ async def create_records_db(config, records):
     vo_mapping = json.loads(config["uservo"].get("vo_mapping"))
     submit_host = config["site"].get("submit_host")
     infrastructure = config["site"].get("infrastructure_type")
-    benchmark_type = config["site"].get("benchmark_type")
     benchmark_name = config["auditor"].get("benchmark_name")
     cores_name = config["auditor"].get("cores_name")
 
@@ -228,8 +223,6 @@ async def create_records_db(config, records):
             year,
             month,
             cpucount,
-            benchmark_type,
-            benchmark_value,
             r.record_id,
             r.runtime,
             norm_runtime,
@@ -264,8 +257,6 @@ async def create_summary_db(records_db):
                        month,
                        cpucount,
                        COUNT(recordid) as jobcount,
-                       benchmarktype,
-                       benchmarkvalue,
                        SUM(runtime) as runtime,
                        SUM(normruntime) as norm_runtime,
                        MIN(stoptime) as min_stoptime,
@@ -275,8 +266,6 @@ async def create_summary_db(records_db):
                          vo,
                          year,
                          month,
-                         benchmarktype,
-                         benchmarkvalue,
                          cpucount
                 """
     await cur.execute(group_sql)
@@ -302,15 +291,13 @@ async def create_summary(grouped_dict):
         summary += f"SubmitHost: {entry['submithost']}\n"
         summary += f"Infrastructure: {entry['infrastructure']}\n"
         summary += f"Processors: {entry['cpucount']}\n"
-        summary += "NodeCount: ???\n"
-        summary += f"ServiceLevelType: {entry['benchmarktype']}\n"
-        summary += f"ServiceLevel: {entry['benchmarkvalue']}\n"
+        summary += "NodeCount: 1\n"
         summary += f"EarliestEndTime: {entry['min_stoptime']}\n"
         summary += f"LatestEndTime: {entry['max_stoptime']}\n"
         summary += f"WallDuration : {entry['runtime']}\n"
-        summary += "CpuDuration: ???\n"
+        summary += f"CpuDuration: {entry['runtime']}\n"
         summary += f"NormalisedWallDuration: {entry['norm_runtime']}\n"
-        summary += "NormalisedCpuDuration: ???\n"
+        summary += f"NormalisedCpuDuration: {entry['norm_runtime']}\n"
         summary += f"NumberOfJobs: {entry['jobcount']}\n"
         summary += "%%\n"
 
@@ -357,14 +344,31 @@ async def build_payload(msg):
     current_time = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     empaid = f"{current_time[:8]}/{current_time}"
 
-    payload = {"attributes": {"empaid": empaid}, "data": msg}
+    payload = {"messages": [{"attributes": {"empaid": empaid}, "data": msg}]}
 
     return payload
+
+
+async def send_payload(config, token, payload):
+    # ca_path = config["authentication"].get("ca_path")
+    ams_url = config["authentication"].get("ams_url")
+    logging.debug(f"{ams_url}{token}")
+    post = requests.post(
+        f"{ams_url}{token}",
+        json=payload,
+        headers={"Content-Type": "application/json"},
+        verify=False,
+    )
+
+    return post
 
 
 async def run(config, client):
     run_interval = config["intervals"].getint("run_interval")
     report_interval = config["intervals"].getint("report_interval")
+
+    token = await get_token(config)
+    logging.debug(token)
 
     while True:
         time_db_conn = await get_time_db(config)
@@ -393,14 +397,14 @@ async def run(config, client):
             grouped_dict = await create_summary_db(records_db)
             summary = await create_summary(grouped_dict)
             logging.debug(summary)
-            token = await get_token(config)
-            logging.debug(token)
             signed_summary = await sign_msg(config, summary)
             logging.debug(signed_summary)
             encoded_summary = base64.b64encode(signed_summary).decode("utf-8")
             logging.debug(encoded_summary)
             payload_summary = await build_payload(encoded_summary)
             logging.debug(payload_summary)
+            post = await send_payload(config, token, payload_summary)
+            logging.debug(post.status_code)
 
             latest_report_time = datetime.now()
             await update_time_db(
