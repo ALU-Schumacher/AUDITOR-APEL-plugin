@@ -11,7 +11,7 @@ from pathlib import Path
 import sqlite3
 import aiosqlite
 from aiosqlite import Error
-from datetime import datetime
+from datetime import datetime, timedelta, time
 import configparser
 import pytz
 import json
@@ -22,6 +22,16 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import pkcs7
 import base64
+
+
+async def get_begin_previous_month(current_time):
+    first_current_month = current_time.replace(day=1)
+    previous_month = first_current_month - timedelta(days=1)
+    first_previous_month = previous_month.replace(day=1)
+    begin_previous_month = datetime.combine(first_previous_month, time())
+    begin_previous_month_utc = begin_previous_month.replace(tzinfo=pytz.utc)
+
+    return begin_previous_month_utc
 
 
 async def regex_dict_lookup(term, dict):
@@ -128,7 +138,7 @@ async def update_time_db(conn, stop_time, report_time):
         logging.critical(e)
 
 
-async def create_records_db(config, records):
+async def create_summary_db(config, records):
     create_table_sql = """
                        CREATE TABLE IF NOT EXISTS records(
                            site TEXT NOT NULL,
@@ -172,6 +182,7 @@ async def create_records_db(config, records):
                             ?, ?
                         )
                         """
+
     try:
         conn = await aiosqlite.connect(":memory:")
         cur = await conn.cursor()
@@ -243,9 +254,82 @@ async def create_records_db(config, records):
     return conn
 
 
-async def create_summary_db(records_db):
-    records_db.row_factory = aiosqlite.Row
-    cur = await records_db.cursor()
+async def create_sync_db(config, records):
+    create_table_sql = """
+                       CREATE TABLE IF NOT EXISTS records(
+                           site TEXT NOT NULL,
+                           submithost TEXT NOT NULL,
+                           year INTEGER NOT NULL,
+                           month INTEGER NOT NULL,
+                           recordid TEXT UNIQUE NOT NULL
+                       )
+                       """
+
+    insert_record_sql = """
+                        INSERT INTO records(
+                            site,
+                            submithost,
+                            year,
+                            month,
+                            recordid
+                        )
+                        VALUES(
+                            ?, ?, ?, ?, ?
+                        )
+                        """
+
+    try:
+        conn = await aiosqlite.connect(":memory:")
+        cur = await conn.cursor()
+        await cur.execute(create_table_sql)
+    except Error as e:
+        logging.critical(e)
+
+    try:
+        site_name_mapping = json.loads(config["site"].get("site_name_mapping"))
+    except TypeError:
+        site_name_mapping = None
+
+    submit_host = config["site"].get("submit_host")
+
+    for r in records:
+        if site_name_mapping is not None:
+            try:
+                site_name = site_name_mapping[r.site_id]
+            except KeyError:
+                logging.critical(
+                    f"No site name mapping defined for site {r.site_id}"
+                )
+                sys.exit(1)
+        else:
+            site_name = r.site_id
+        year = r.stop_time.replace(tzinfo=pytz.utc).year
+        month = r.stop_time.replace(tzinfo=pytz.utc).month
+
+        data_tuple = (
+            site_name,
+            submit_host,
+            year,
+            month,
+            r.record_id,
+        )
+        try:
+            await cur.execute(insert_record_sql, data_tuple)
+        except Error as e:
+            logging.critical(e)
+
+    try:
+        await conn.commit()
+        await cur.close()
+    except Error as e:
+        logging.critical(e)
+
+    return conn
+
+
+async def group_summary_db(summary_db):
+    summary_db.row_factory = aiosqlite.Row
+    cur = await summary_db.cursor()
     group_sql = """
                 SELECT site,
                        submithost,
@@ -263,25 +347,49 @@ async def create_summary_db(records_db):
                        MAX(stoptime) as max_stoptime
                 FROM records
                 GROUP BY site,
+                         submithost,
                          vo,
                          year,
                          month,
                          cpucount
                 """
+
     await cur.execute(group_sql)
-
-    grouped_dict = await cur.fetchall()
-
+    grouped_summary_list = await cur.fetchall()
     await cur.close()
-    await records_db.close()
+    await summary_db.close()
 
-    return grouped_dict
+    return grouped_summary_list
 
 
-async def create_summary(grouped_dict):
+async def group_sync_db(sync_db):
+    sync_db.row_factory = aiosqlite.Row
+    cur = await sync_db.cursor()
+    group_sql = """
+                SELECT site,
+                       submithost,
+                       year,
+                       month,
+                       COUNT(recordid) as jobcount
+                FROM records
+                GROUP BY site,
+                         submithost,
+                         year,
+                         month
+                """
+
+    await cur.execute(group_sql)
+    grouped_sync_list = await cur.fetchall()
+    await cur.close()
+    await sync_db.close()
+
+    return grouped_sync_list
+
+
+async def create_summary(grouped_summary_list):
     summary = "APEL-summary-job-message: v0.3\n"
 
-    for entry in grouped_dict:
+    for entry in grouped_summary_list:
         summary += f"Site: {entry['site']}\n"
         summary += f"Month: {entry['month']}\n"
         summary += f"Year: {entry['year']}\n"
@@ -302,6 +410,20 @@ async def create_summary(grouped_dict):
         summary += "%%\n"
 
     return summary
+
+
+async def create_sync(sync_db):
+    sync = "APEL-sync-message: v0.1\n"
+
+    for entry in sync_db:
+        sync += f"Site: {entry['site']}\n"
+        sync += f"Month: {entry['month']}\n"
+        sync += f"Year: {entry['year']}\n"
+        sync += f"SubmitHost: {entry['submithost']}\n"
+        sync += f"NumberOfJobs: {entry['jobcount']}\n"
+        sync += "%%\n"
+
+    return sync
 
 
 async def get_token(config):
@@ -387,15 +509,14 @@ async def run(config, client):
         try:
             start_time = await get_start_time(time_db_conn)
             logging.info(f"Getting records since {start_time}")
-            records = await client.get_stopped_since(start_time)
-
-            latest_stop_time = records[-1].stop_time.replace(tzinfo=pytz.utc)
+            records_summary = await client.get_stopped_since(start_time)
+            latest_stop_time = records_summary[-1].stop_time.replace(
+                tzinfo=pytz.utc
+            )
             logging.debug(f"Latest stop time is {latest_stop_time}")
-
-            # maybe move this into one function create_summary(records)?
-            records_db = await create_records_db(config, records)
-            grouped_dict = await create_summary_db(records_db)
-            summary = await create_summary(grouped_dict)
+            summary_db = await create_summary_db(config, records_summary)
+            grouped_summary_list = await group_summary_db(summary_db)
+            summary = await create_summary(grouped_summary_list)
             logging.debug(summary)
             signed_summary = await sign_msg(config, summary)
             logging.debug(signed_summary)
@@ -403,8 +524,23 @@ async def run(config, client):
             logging.debug(encoded_summary)
             payload_summary = await build_payload(encoded_summary)
             logging.debug(payload_summary)
-            post = await send_payload(config, token, payload_summary)
-            logging.debug(post.status_code)
+            post_summary = await send_payload(config, token, payload_summary)
+            logging.debug(post_summary.status_code)
+
+            begin_previous_month = await get_begin_previous_month(current_time)
+            records_sync = await client.get_stopped_since(begin_previous_month)
+            sync_db = await create_sync_db(config, records_sync)
+            grouped_sync_list = await group_sync_db(sync_db)
+            sync = await create_sync(grouped_sync_list)
+            logging.debug(sync)
+            signed_sync = await sign_msg(config, sync)
+            logging.debug(signed_sync)
+            encoded_sync = base64.b64encode(signed_sync).decode("utf-8")
+            logging.debug(encoded_sync)
+            payload_sync = await build_payload(encoded_sync)
+            logging.debug(payload_sync)
+            post_sync = await send_payload(config, token, payload_sync)
+            logging.debug(post_sync.status_code)
 
             latest_report_time = datetime.now()
             await update_time_db(
