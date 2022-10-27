@@ -12,8 +12,8 @@ import sqlite3
 import aiosqlite
 from aiosqlite import Error
 from datetime import datetime, timedelta, time
-import configparser
 import pytz
+import configparser
 import json
 import sys
 import re
