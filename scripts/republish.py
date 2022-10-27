@@ -12,7 +12,7 @@ import argparse
 from datetime import datetime
 import pytz
 import base64
-import apel_plugin.apel_plugin as apel_plugin
+import apel_plugin.functions as functions
 
 
 async def run(config, args, client):
@@ -22,27 +22,25 @@ async def run(config, args, client):
     begin_month = datetime(year, month, 1).replace(tzinfo=pytz.utc)
 
     records = await client.get_stopped_since(begin_month)
-    token = await apel_plugin.get_token(config)
+    token = await functions.get_token(config)
     logging.debug(token)
 
-    summary_db = await apel_plugin.create_summary_db(config, records)
-    grouped_summary_list = await apel_plugin.group_summary_db(summary_db)
-    summary = await apel_plugin.create_summary(grouped_summary_list)
+    summary_db = await functions.create_summary_db(config, records)
+    grouped_summary_list = await functions.group_summary_db(summary_db)
+    summary = await functions.create_summary(grouped_summary_list)
     logging.debug(summary)
-    signed_summary = await apel_plugin.sign_msg(config, summary)
+    signed_summary = await functions.sign_msg(config, summary)
     logging.debug(signed_summary)
     encoded_summary = base64.b64encode(signed_summary).decode("utf-8")
     logging.debug(encoded_summary)
-    payload_summary = await apel_plugin.build_payload(encoded_summary)
+    payload_summary = await functions.build_payload(encoded_summary)
     logging.debug(payload_summary)
-    post_summary = await apel_plugin.send_payload(
-        config, token, payload_summary
-    )
+    post_summary = await functions.send_payload(config, token, payload_summary)
     logging.debug(post_summary.status_code)
 
 
 def main():
-    FORMAT = "[%(asctime)s] %(levelname)-8s %(message)s"
+    FORMAT = "[%(asctime)s] %(levelname)-8s %(message)s %(module)s"
     logging.basicConfig(
         encoding="utf-8",
         level=logging.DEBUG,
