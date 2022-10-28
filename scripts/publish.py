@@ -11,7 +11,7 @@ from datetime import datetime
 import pytz
 import configparser
 import base64
-import apel_plugin.functions as functions
+from apel_plugin import functions
 
 
 async def run(config, client):
@@ -91,20 +91,21 @@ async def run(config, client):
 
 
 def main():
-    FORMAT = "[%(asctime)s] %(levelname)-8s %(message)s"
+    config = configparser.ConfigParser()
+    config.read("apel_plugin.cfg")
+
+    log_level = config["logging"].get("log_level")
+    log_format = "[%(asctime)s] %(levelname)-8s %(message)s"
     logging.basicConfig(
         # filename="apel_plugin.log",
         encoding="utf-8",
-        level=logging.DEBUG,
-        format=FORMAT,
+        level=log_level,
+        format=log_format,
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    logging.getLogger("asyncio").setLevel(logging.WARNING)
-    logging.getLogger("aiosqlite").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-
-    config = configparser.ConfigParser()
-    config.read("apel_plugin.cfg")
+    logging.getLogger("asyncio").setLevel("WARNING")
+    logging.getLogger("aiosqlite").setLevel("WARNING")
+    logging.getLogger("urllib3").setLevel("WARNING")
 
     auditor_ip = config["auditor"].get("auditor_ip")
     auditor_port = config["auditor"].getint("auditor_port")

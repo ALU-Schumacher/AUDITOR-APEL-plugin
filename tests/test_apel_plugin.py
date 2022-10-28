@@ -1,5 +1,5 @@
 import pytest
-import apel_plugin.functions as functions
+from apel_plugin import functions
 
 
 @pytest.mark.asyncio
