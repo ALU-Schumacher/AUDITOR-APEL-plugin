@@ -26,7 +26,8 @@ async def run(config, args, client):
     logging.debug(token)
 
     summary_db = await functions.create_summary_db(config, records)
-    grouped_summary_list = await functions.group_summary_db(summary_db)
+    filtered_db = await functions.sql_filter(summary_db, month, year)
+    grouped_summary_list = await functions.group_summary_db(filtered_db)
     summary = await functions.create_summary(grouped_summary_list)
     logging.debug(summary)
     signed_summary = await functions.sign_msg(config, summary)
@@ -44,7 +45,7 @@ def main():
     config.read("apel_plugin.cfg")
 
     log_level = config["logging"].get("log_level")
-    log_format = "[%(asctime)s] %(levelname)-8s %(message)s %(module)s"
+    log_format = "[%(asctime)s] %(levelname)-8s %(message)s"
     logging.basicConfig(
         encoding="utf-8",
         level=log_level,

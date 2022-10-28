@@ -19,6 +19,19 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import pkcs7
 
 
+async def sql_filter(db, month, year):
+    filter = f"""
+              DELETE FROM records WHERE month IS NOT {month}
+              OR year IS NOT {year}
+              """
+    cur = await db.cursor()
+    await cur.execute(filter)
+    await db.commit()
+    await cur.close()
+
+    return db
+
+
 async def get_begin_previous_month(current_time):
     first_current_month = current_time.replace(day=1)
     previous_month = first_current_month - timedelta(days=1)
