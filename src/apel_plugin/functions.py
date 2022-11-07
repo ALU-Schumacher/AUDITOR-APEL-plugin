@@ -198,6 +198,10 @@ async def create_summary_db(config, records):
     except Error as e:
         logging.critical(e)
 
+    sites_to_report = config["site"].get("sites_to_report")
+    if sites_to_report != "all":
+        sites_to_report = json.loads(sites_to_report)
+
     try:
         site_name_mapping = json.loads(config["site"].get("site_name_mapping"))
     except TypeError:
@@ -210,6 +214,9 @@ async def create_summary_db(config, records):
     cores_name = config["auditor"].get("cores_name")
 
     for r in records:
+        if sites_to_report != "all":
+            if r.site_id not in sites_to_report:
+                continue
         if site_name_mapping is not None:
             try:
                 site_name = site_name_mapping[r.site_id]
@@ -293,6 +300,10 @@ async def create_sync_db(config, records):
     except Error as e:
         logging.critical(e)
 
+    sites_to_report = config["site"].get("sites_to_report")
+    if sites_to_report != "all":
+        sites_to_report = json.loads(sites_to_report)
+
     try:
         site_name_mapping = json.loads(config["site"].get("site_name_mapping"))
     except TypeError:
@@ -301,6 +312,9 @@ async def create_sync_db(config, records):
     submit_host = config["site"].get("submit_host")
 
     for r in records:
+        if sites_to_report != "all":
+            if r.site_id not in sites_to_report:
+                continue
         if site_name_mapping is not None:
             try:
                 site_name = site_name_mapping[r.site_id]
