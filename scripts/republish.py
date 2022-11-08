@@ -18,6 +18,7 @@ from apel_plugin import functions
 async def run(config, args, client):
     month = args.month
     year = args.year
+    site = args.site
 
     begin_month = datetime(year, month, 1).replace(tzinfo=pytz.utc)
 
@@ -26,7 +27,7 @@ async def run(config, args, client):
     logging.debug(token)
 
     summary_db = await functions.create_summary_db(config, records)
-    filtered_db = await functions.sql_filter(summary_db, month, year)
+    filtered_db = await functions.sql_filter(summary_db, month, year, site)
     grouped_summary_list = await functions.group_summary_db(filtered_db)
     summary = await functions.create_summary(grouped_summary_list)
     logging.debug(summary)
@@ -58,10 +59,13 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-y", "--year", type=int, required=True, help="year: 2020, 2021, ..."
+        "-y", "--year", type=int, required=True, help="Year: 2020, 2021, ..."
     )
     parser.add_argument(
-        "-m", "--month", type=int, required=True, help="month: 4, 8, 12, ..."
+        "-m", "--month", type=int, required=True, help="Month: 4, 8, 12, ..."
+    )
+    parser.add_argument(
+        "-s", "--site", required=True, help="Site (GOCDB): UNI-FREIBURG, ..."
     )
     args = parser.parse_args()
 

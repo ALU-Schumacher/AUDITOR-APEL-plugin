@@ -19,10 +19,12 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import pkcs7
 
 
-async def sql_filter(db, month, year):
+async def sql_filter(db, month, year, site):
     filter = f"""
-              DELETE FROM records WHERE month IS NOT {month}
+              DELETE FROM records
+              WHERE month IS NOT {month}
               OR year IS NOT {year}
+              OR site IS NOT '{site}'
               """
     cur = await db.cursor()
     await cur.execute(filter)
@@ -199,8 +201,6 @@ async def create_summary_db(config, records):
         logging.critical(e)
 
     sites_to_report = config["site"].get("sites_to_report")
-    if sites_to_report != "all":
-        sites_to_report = json.loads(sites_to_report)
 
     try:
         site_name_mapping = json.loads(config["site"].get("site_name_mapping"))
@@ -215,7 +215,7 @@ async def create_summary_db(config, records):
 
     for r in records:
         if sites_to_report != "all":
-            if r.site_id not in sites_to_report:
+            if r.site_id not in json.loads(sites_to_report):
                 continue
         if site_name_mapping is not None:
             try:
@@ -301,8 +301,6 @@ async def create_sync_db(config, records):
         logging.critical(e)
 
     sites_to_report = config["site"].get("sites_to_report")
-    if sites_to_report != "all":
-        sites_to_report = json.loads(sites_to_report)
 
     try:
         site_name_mapping = json.loads(config["site"].get("site_name_mapping"))
@@ -313,7 +311,7 @@ async def create_sync_db(config, records):
 
     for r in records:
         if sites_to_report != "all":
-            if r.site_id not in sites_to_report:
+            if r.site_id not in json.loads(sites_to_report):
                 continue
         if site_name_mapping is not None:
             try:
