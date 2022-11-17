@@ -62,17 +62,16 @@ async def get_time_db(config):
                 detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
             )
         else:
-            conn = await create_time_db(time_db_path)
+            conn = await create_time_db(config, time_db_path)
     except Error as e:
         logging.critical(e)
 
     return conn
 
 
-async def create_time_db(time_db_path):
+async def create_time_db(config, time_db_path):
     create_table_sql = """
                        CREATE TABLE IF NOT EXISTS times(
-                           target TEXT UNIQUE NOT NULL,
                            last_end_time INTEGER NOT NULL,
                            last_report_time timestamp NOT NULL
                        )
@@ -80,17 +79,23 @@ async def create_time_db(time_db_path):
 
     insert_sql = """
                  INSERT INTO times(
-                     target,
                      last_end_time,
                      last_report_time
                  )
                  VALUES(
-                     ?, ?, ?
+                     ?, ?
                  )
                  """
 
-    ini_time = datetime(1970, 1, 1, 0, 0, 0)
-    data_tuple = ("arex/jura/apel:EGI", 0, ini_time)
+    initial_report_time = datetime(1970, 1, 1, 0, 0, 0)
+    publish_since = config["site"].get("publish_since")
+    publish_since_datetime = datetime.strptime(
+        publish_since, "%Y-%m-%d %H:%M:%S%z"
+    )
+    data_tuple = (
+        publish_since_datetime.replace(tzinfo=pytz.utc).timestamp(),
+        initial_report_time,
+    )
 
     try:
         conn = await aiosqlite.connect(
