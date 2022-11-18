@@ -26,10 +26,10 @@ async def run(config, client):
         current_time = datetime.now()
         time_since_report = (current_time - last_report_time).total_seconds()
 
-        if not time_since_report >= report_interval:
+        if time_since_report < report_interval:
             logging.info("Not enough time since last report")
             await time_db_conn.close()
-            await asyncio.sleep(report_interval)
+            await asyncio.sleep(report_interval - time_since_report)
             continue
         else:
             logging.info("Enough time since last report, create new report")
