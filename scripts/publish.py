@@ -15,7 +15,6 @@ from apel_plugin import functions
 
 
 async def run(config, client):
-    run_interval = config["intervals"].getint("run_interval")
     report_interval = config["intervals"].getint("report_interval")
 
     token = await functions.get_token(config)
@@ -30,7 +29,7 @@ async def run(config, client):
         if not time_since_report >= report_interval:
             logging.info("Not enough time since last report")
             await time_db_conn.close()
-            await asyncio.sleep(run_interval)
+            await asyncio.sleep(report_interval)
             continue
         else:
             logging.info("Enough time since last report, create new report")
@@ -87,7 +86,7 @@ async def run(config, client):
             logging.info("No new records, do nothing for now")
 
         await time_db_conn.close()
-        await asyncio.sleep(run_interval)
+        await asyncio.sleep(report_interval)
 
 
 def main():
