@@ -3,6 +3,7 @@ from apel_plugin import functions
 from datetime import datetime
 import pytz
 import aiosqlite
+import configparser
 
 
 @pytest.mark.asyncio
@@ -84,6 +85,30 @@ class TestAPELPlugin:
                     result = await cur.fetchall()
                     await cur.close()
                     await dst.close()
+
                     assert result == [(site, year, month)]
 
         await conn.close()
+
+    async def test_create_time_db(self):
+        path = ":memory:"
+        conf = configparser.ConfigParser()
+
+        publish_since_list = [
+            "1970-01-01 00:00:00+00:00",
+            "2020-01-01 17:23:00+00:00",
+            "2022-12-17 20:20:20+01:00",
+        ]
+
+        for publish_since in publish_since_list:
+            conf.read_string(f"[site]\npublish_since = {publish_since}")
+            time_db = await functions.create_time_db(conf, path)
+            cur = await time_db.cursor()
+            await cur.execute("SELECT * FROM times")
+            result = await cur.fetchall()
+            await cur.close()
+            await time_db.close()
+            time_dt = datetime.strptime(publish_since, "%Y-%m-%d %H:%M:%S%z")
+            time_stamp = time_dt.replace(tzinfo=pytz.utc).timestamp()
+
+            assert result == [(time_stamp, datetime(1970, 1, 1, 0, 0, 0))]
