@@ -110,6 +110,7 @@ async def create_time_db(config, time_db_path):
         return conn
     except Error as e:
         logging.critical(e)
+        raise e
 
 
 async def get_start_time(conn):
