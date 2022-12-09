@@ -54,6 +54,7 @@ async def regex_dict_lookup(term, dict):
 
 async def get_time_db(config):
     time_db_path = config["paths"].get("time_db_path")
+    publish_since = config["site"].get("publish_since")
 
     try:
         if Path(time_db_path).is_file():
@@ -62,14 +63,14 @@ async def get_time_db(config):
                 detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
             )
         else:
-            conn = await create_time_db(config, time_db_path)
+            conn = await create_time_db(publish_since, time_db_path)
     except Error as e:
         logging.critical(e)
 
     return conn
 
 
-async def create_time_db(config, time_db_path):
+async def create_time_db(publish_since, time_db_path):
     create_table_sql = """
                        CREATE TABLE IF NOT EXISTS times(
                            last_end_time INTEGER NOT NULL,
@@ -88,7 +89,6 @@ async def create_time_db(config, time_db_path):
                  """
 
     initial_report_time = datetime(1970, 1, 1, 0, 0, 0)
-    publish_since = config["site"].get("publish_since")
     publish_since_datetime = datetime.strptime(
         publish_since, "%Y-%m-%d %H:%M:%S%z"
     )
