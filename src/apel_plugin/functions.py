@@ -66,6 +66,7 @@ async def get_time_db(config):
             conn = await create_time_db(publish_since, time_db_path)
     except Error as e:
         logging.critical(e)
+        raise e
 
     return conn
 
@@ -124,6 +125,7 @@ async def get_start_time(conn):
         return start_time
     except Error as e:
         logging.critical(e)
+        raise e
 
 
 async def get_report_time(conn):
@@ -137,6 +139,7 @@ async def get_report_time(conn):
         return report_time
     except Error as e:
         logging.critical(e)
+        raise e
 
 
 async def update_time_db(conn, stop_time, report_time):
@@ -152,6 +155,7 @@ async def update_time_db(conn, stop_time, report_time):
         await cur.close()
     except Error as e:
         logging.critical(e)
+        raise e
 
 
 async def create_summary_db(config, records):
@@ -205,6 +209,7 @@ async def create_summary_db(config, records):
         await cur.execute(create_table_sql)
     except Error as e:
         logging.critical(e)
+        raise e
 
     sites_to_report = config["site"].get("sites_to_report")
 
@@ -265,12 +270,14 @@ async def create_summary_db(config, records):
             await cur.execute(insert_record_sql, data_tuple)
         except Error as e:
             logging.critical(e)
+            raise e
 
     try:
         await conn.commit()
         await cur.close()
     except Error as e:
         logging.critical(e)
+        raise e
 
     return conn
 
@@ -305,6 +312,7 @@ async def create_sync_db(config, records):
         await cur.execute(create_table_sql)
     except Error as e:
         logging.critical(e)
+        raise e
 
     sites_to_report = config["site"].get("sites_to_report")
 
@@ -343,12 +351,14 @@ async def create_sync_db(config, records):
             await cur.execute(insert_record_sql, data_tuple)
         except Error as e:
             logging.critical(e)
+            raise e
 
     try:
         await conn.commit()
         await cur.close()
     except Error as e:
         logging.critical(e)
+        raise e
 
     return conn
 
