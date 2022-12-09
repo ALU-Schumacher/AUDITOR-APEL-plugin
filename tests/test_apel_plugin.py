@@ -112,3 +112,21 @@ class TestAPELPlugin:
             time_stamp = time_dt.replace(tzinfo=pytz.utc).timestamp()
 
             assert result == [(time_stamp, datetime(1970, 1, 1, 0, 0, 0))]
+
+    async def test_create_time_db_fail(self):
+        path = "/home/nonexistent/time.db"
+        conf = configparser.ConfigParser()
+
+        publish_since = "1970-01-01 00:00:00+00:00"
+
+        conf.read_string(f"[site]\npublish_since = {publish_since}")
+        with pytest.raises(Exception) as pytest_error:
+            await functions.create_time_db(conf, path)
+        assert pytest_error.type == aiosqlite.OperationalError
+
+        publish_since = "1970-01-01"
+
+        conf.read_string(f"[site]\npublish_since = {publish_since}")
+        with pytest.raises(Exception) as pytest_error:
+            await functions.create_time_db(conf, path)
+        assert pytest_error.type == ValueError

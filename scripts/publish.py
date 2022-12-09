@@ -94,7 +94,10 @@ def main():
     config.read("apel_plugin.cfg")
 
     log_level = config["logging"].get("log_level")
-    log_format = "[%(asctime)s] %(levelname)-8s %(message)s"
+    log_format = (
+        "[%(asctime)s] %(levelname)-8s %(message)s "
+        "(%(pathname)s at line %(lineno)d)"
+    )
     logging.basicConfig(
         # filename="apel_plugin.log",
         encoding="utf-8",
