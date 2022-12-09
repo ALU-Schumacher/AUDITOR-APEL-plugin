@@ -3,7 +3,6 @@ from apel_plugin import functions
 from datetime import datetime
 import pytz
 import aiosqlite
-import configparser
 
 
 @pytest.mark.asyncio
@@ -92,8 +91,6 @@ class TestAPELPlugin:
 
     async def test_create_time_db(self):
         path = ":memory:"
-        conf = configparser.ConfigParser()
-
         publish_since_list = [
             "1970-01-01 00:00:00+00:00",
             "2020-01-01 17:23:00+00:00",
@@ -101,8 +98,7 @@ class TestAPELPlugin:
         ]
 
         for publish_since in publish_since_list:
-            conf.read_string(f"[site]\npublish_since = {publish_since}")
-            time_db = await functions.create_time_db(conf, path)
+            time_db = await functions.create_time_db(publish_since, path)
             cur = await time_db.cursor()
             await cur.execute("SELECT * FROM times")
             result = await cur.fetchall()
@@ -115,18 +111,14 @@ class TestAPELPlugin:
 
     async def test_create_time_db_fail(self):
         path = "/home/nonexistent/time.db"
-        conf = configparser.ConfigParser()
-
         publish_since = "1970-01-01 00:00:00+00:00"
 
-        conf.read_string(f"[site]\npublish_since = {publish_since}")
         with pytest.raises(Exception) as pytest_error:
-            await functions.create_time_db(conf, path)
+            await functions.create_time_db(publish_since, path)
         assert pytest_error.type == aiosqlite.OperationalError
 
         publish_since = "1970-01-01"
 
-        conf.read_string(f"[site]\npublish_since = {publish_since}")
         with pytest.raises(Exception) as pytest_error:
-            await functions.create_time_db(conf, path)
+            await functions.create_time_db(publish_since, path)
         assert pytest_error.type == ValueError
