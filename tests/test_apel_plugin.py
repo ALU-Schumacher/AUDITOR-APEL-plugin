@@ -1,5 +1,10 @@
 import pytest
-from apel_plugin import functions
+from apel_plugin.core import (
+    regex_dict_lookup,
+    get_begin_previous_month,
+    sql_filter,
+    create_time_db,
+)
 from datetime import datetime
 import pytz
 import aiosqlite
@@ -14,14 +19,14 @@ class TestAPELPlugin:
 
         dict = {"^a": "apple_in_dict", "^b": "banana_in_dict"}
 
-        result = await functions.regex_dict_lookup(term_a, dict)
+        result = await regex_dict_lookup(term_a, dict)
         assert result == "apple_in_dict"
 
-        result = await functions.regex_dict_lookup(term_b, dict)
+        result = await regex_dict_lookup(term_b, dict)
         assert result == "banana_in_dict"
 
         with pytest.raises(SystemExit) as pytest_error:
-            await functions.regex_dict_lookup(term_c, dict)
+            await regex_dict_lookup(term_c, dict)
         assert pytest_error.type == SystemExit
         assert pytest_error.value.code == 1
 
@@ -29,10 +34,10 @@ class TestAPELPlugin:
         time_a = datetime(2022, 10, 23, 12, 23, 55)
         time_b = datetime(1970, 1, 1, 00, 00, 00)
 
-        result = await functions.get_begin_previous_month(time_a)
+        result = await get_begin_previous_month(time_a)
         assert result == datetime(2022, 9, 1, 00, 00, 00, tzinfo=pytz.utc)
 
-        result = await functions.get_begin_previous_month(time_b)
+        result = await get_begin_previous_month(time_b)
         assert result == datetime(1969, 12, 1, 00, 00, 00, tzinfo=pytz.utc)
 
     async def test_sql_filter(self):
@@ -76,9 +81,7 @@ class TestAPELPlugin:
                 for month in month_list:
                     dst = await aiosqlite.connect(":memory:")
                     await conn.backup(dst)
-                    filtered_db = await functions.sql_filter(
-                        dst, month, year, site
-                    )
+                    filtered_db = await sql_filter(dst, month, year, site)
                     cur = await filtered_db.cursor()
                     await cur.execute("SELECT * FROM records")
                     result = await cur.fetchall()
@@ -98,7 +101,7 @@ class TestAPELPlugin:
         ]
 
         for publish_since in publish_since_list:
-            time_db = await functions.create_time_db(publish_since, path)
+            time_db = await create_time_db(publish_since, path)
             cur = await time_db.cursor()
             await cur.execute("SELECT * FROM times")
             result = await cur.fetchall()
@@ -114,11 +117,11 @@ class TestAPELPlugin:
         publish_since = "1970-01-01 00:00:00+00:00"
 
         with pytest.raises(Exception) as pytest_error:
-            await functions.create_time_db(publish_since, path)
+            await create_time_db(publish_since, path)
         assert pytest_error.type == aiosqlite.OperationalError
 
         publish_since = "1970-01-01"
 
         with pytest.raises(Exception) as pytest_error:
-            await functions.create_time_db(publish_since, path)
+            await create_time_db(publish_since, path)
         assert pytest_error.type == ValueError
