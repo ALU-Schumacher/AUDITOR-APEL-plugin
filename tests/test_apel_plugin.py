@@ -25,10 +25,8 @@ class TestAPELPlugin:
         result = await regex_dict_lookup(term_b, dict)
         assert result == "banana_in_dict"
 
-        with pytest.raises(SystemExit) as pytest_error:
-            await regex_dict_lookup(term_c, dict)
-        assert pytest_error.type == SystemExit
-        assert pytest_error.value.code == 1
+        result = await regex_dict_lookup(term_c, dict)
+        assert result is None
 
     async def test_get_begin_previous_month(self):
         time_a = datetime(2022, 10, 23, 12, 23, 55)

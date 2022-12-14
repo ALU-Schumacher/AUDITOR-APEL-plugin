@@ -45,11 +45,12 @@ async def get_begin_previous_month(current_time):
 
 
 async def regex_dict_lookup(term, dict):
+    result = None
     for key in dict:
         if re.search(key, term):
-            return dict[key]
-    logging.critical(f"Search term {term} not matched in {dict.keys()}")
-    sys.exit(1)
+            result = dict[key]
+
+    return result
 
 
 async def get_time_db(config):
@@ -238,7 +239,14 @@ async def create_summary_db(config, records):
                 sys.exit(1)
         else:
             site_name = r.site_id
+
         vo_info = await regex_dict_lookup(r.user_id, vo_mapping)
+        if vo_info is None:
+            logging.critical(
+                f"User {r.user_id} not matched in {vo_mapping.keys()}"
+            )
+            raise KeyError
+
         year = r.stop_time.replace(tzinfo=pytz.utc).year
         month = r.stop_time.replace(tzinfo=pytz.utc).month
         for c in r.components:
