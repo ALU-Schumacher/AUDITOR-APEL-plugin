@@ -19,21 +19,6 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import pkcs7
 
 
-async def sql_filter(db, month, year, site):
-    filter = f"""
-              DELETE FROM records
-              WHERE month IS NOT {month}
-              OR year IS NOT {year}
-              OR site IS NOT '{site}'
-              """
-    cur = await db.cursor()
-    await cur.execute(filter)
-    await db.commit()
-    await cur.close()
-
-    return db
-
-
 async def get_begin_previous_month(current_time):
     first_current_month = current_time.replace(day=1)
     previous_month = first_current_month - timedelta(days=1)
@@ -371,33 +356,42 @@ async def create_sync_db(config, records):
     return conn
 
 
-async def group_summary_db(summary_db):
+async def group_summary_db(summary_db, filter_by: (int, int, str) = None):
+    filter = ""
+    if filter_by is not None:
+        filter = f"""
+                  WHERE month IS {filter_by[0]}
+                  AND year IS {filter_by[1]}
+                  AND site IS '{filter_by[2]}'
+                  """
+
+    group_sql = f"""
+                 SELECT site,
+                        submithost,
+                        vo,
+                        vogroup,
+                        vorole,
+                        infrastructure,
+                        year,
+                        month,
+                        cpucount,
+                        COUNT(recordid) as jobcount,
+                        SUM(runtime) as runtime,
+                        SUM(normruntime) as norm_runtime,
+                        MIN(stoptime) as min_stoptime,
+                        MAX(stoptime) as max_stoptime
+                 FROM records
+                 {filter}
+                 GROUP BY site,
+                          submithost,
+                          vo,
+                          year,
+                          month,
+                          cpucount
+                 """
+
     summary_db.row_factory = aiosqlite.Row
     cur = await summary_db.cursor()
-    group_sql = """
-                SELECT site,
-                       submithost,
-                       vo,
-                       vogroup,
-                       vorole,
-                       infrastructure,
-                       year,
-                       month,
-                       cpucount,
-                       COUNT(recordid) as jobcount,
-                       SUM(runtime) as runtime,
-                       SUM(normruntime) as norm_runtime,
-                       MIN(stoptime) as min_stoptime,
-                       MAX(stoptime) as max_stoptime
-                FROM records
-                GROUP BY site,
-                         submithost,
-                         vo,
-                         year,
-                         month,
-                         cpucount
-                """
-
     await cur.execute(group_sql)
     grouped_summary_list = await cur.fetchall()
     await cur.close()

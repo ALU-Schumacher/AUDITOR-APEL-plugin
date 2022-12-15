@@ -27,8 +27,9 @@ async def run(config, args, client):
     logging.debug(token)
 
     summary_db = await core.create_summary_db(config, records)
-    filtered_db = await core.sql_filter(summary_db, month, year, site)
-    grouped_summary_list = await core.group_summary_db(filtered_db)
+    grouped_summary_list = await core.group_summary_db(
+        summary_db, filter_by=(month, year, site)
+    )
     summary = await core.create_summary(grouped_summary_list)
     logging.debug(summary)
     signed_summary = await core.sign_msg(config, summary)
