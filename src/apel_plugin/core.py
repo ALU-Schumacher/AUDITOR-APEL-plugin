@@ -38,10 +38,7 @@ async def regex_dict_lookup(term, dict):
     return result
 
 
-async def get_time_db(config):
-    time_db_path = config["paths"].get("time_db_path")
-    publish_since = config["site"].get("publish_since")
-
+async def get_time_db(publish_since, time_db_path):
     try:
         if Path(time_db_path).is_file():
             conn = await aiosqlite.connect(
