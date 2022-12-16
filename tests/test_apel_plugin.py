@@ -58,7 +58,7 @@ class TestAPELPlugin:
             assert result == [(time_stamp, datetime(1970, 1, 1, 0, 0, 0))]
 
     async def test_create_time_db_fail(self):
-        path = "/home/nonexistent/time.db"
+        path = "/home/nonexistent/55/abc/time.db"
         publish_since = "1970-01-01 00:00:00+00:00"
 
         with pytest.raises(Exception) as pytest_error:
