@@ -16,12 +16,14 @@ from apel_plugin import core
 
 async def run(config, client):
     report_interval = config["intervals"].getint("report_interval")
+    time_db_path = config["paths"].get("time_db_path")
+    publish_since = config["site"].get("publish_since")
 
     token = await core.get_token(config)
     logging.debug(token)
 
     while True:
-        time_db_conn = await core.get_time_db(config)
+        time_db_conn = await core.get_time_db(publish_since, time_db_path)
         last_report_time = await core.get_report_time(time_db_conn)
         current_time = datetime.now()
         time_since_report = (current_time - last_report_time).total_seconds()
