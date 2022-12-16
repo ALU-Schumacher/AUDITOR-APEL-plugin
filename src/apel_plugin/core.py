@@ -39,17 +39,13 @@ async def regex_dict_lookup(term, dict):
 
 
 async def get_time_db(publish_since, time_db_path):
-    try:
-        if Path(time_db_path).is_file():
-            conn = await aiosqlite.connect(
-                time_db_path,
-                detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-            )
-        else:
-            conn = await create_time_db(publish_since, time_db_path)
-    except Error as e:
-        logging.critical(e)
-        raise e
+    if Path(time_db_path).is_file():
+        conn = await aiosqlite.connect(
+            time_db_path,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+        )
+    else:
+        conn = await create_time_db(publish_since, time_db_path)
 
     return conn
 
