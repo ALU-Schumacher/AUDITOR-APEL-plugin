@@ -149,6 +149,7 @@ async def create_summary_db(config, records):
                            year INTEGER NOT NULL,
                            month INTEGER NOT NULL,
                            cpucount INTEGER NOT NULL,
+                           nodecount INTEGER NOT NULL,
                            recordid TEXT UNIQUE NOT NULL,
                            runtime INTEGER NOT NULL,
                            normruntime INTEGER NOT NULL,
@@ -170,6 +171,7 @@ async def create_summary_db(config, records):
                             year,
                             month,
                             cpucount,
+                            nodecount,
                             recordid,
                             runtime,
                             normruntime,
@@ -182,7 +184,8 @@ async def create_summary_db(config, records):
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
-                            ?, ?, ?, ?
+                            ?, ?, ?, ?,
+                            ?
                         )
                         """
 
@@ -241,10 +244,12 @@ async def create_summary_db(config, records):
                         benchmark_value = s.factor
             elif c.name == cpu_time_name:
                 cputime = c.amount
+            elif c.name == nnodes_name:
+                nodecount = c.amount
 
         norm_runtime = r.runtime * benchmark_value
         norm_cputime = cputime * benchmark_value
-        
+
         data_tuple = (
             site_name,
             submit_host,
@@ -255,6 +260,7 @@ async def create_summary_db(config, records):
             year,
             month,
             cpucount,
+            nodecount,
             r.record_id,
             r.runtime,
             norm_runtime,
@@ -379,6 +385,7 @@ async def group_summary_db(summary_db, filter_by: (int, int, str) = None):
                         year,
                         month,
                         cpucount,
+                        nodecount,
                         COUNT(recordid) as jobcount,
                         SUM(runtime) as runtime,
                         SUM(normruntime) as norm_runtime,
@@ -393,7 +400,8 @@ async def group_summary_db(summary_db, filter_by: (int, int, str) = None):
                           vo,
                           year,
                           month,
-                          cpucount
+                          cpucount,
+                          nodecount
                  """
 
     summary_db.row_factory = aiosqlite.Row
@@ -443,7 +451,7 @@ async def create_summary(grouped_summary_list):
         summary += f"SubmitHost: {entry['submithost']}\n"
         summary += f"Infrastructure: {entry['infrastructure']}\n"
         summary += f"Processors: {entry['cpucount']}\n"
-        summary += "NodeCount: 1\n"
+        summary += f"NodeCount: {entry['nodecount']}\n"
         summary += f"EarliestEndTime: {entry['min_stoptime']}\n"
         summary += f"LatestEndTime: {entry['max_stoptime']}\n"
         summary += f"WallDuration : {entry['runtime']}\n"
