@@ -152,6 +152,8 @@ async def create_summary_db(config, records):
                            recordid TEXT UNIQUE NOT NULL,
                            runtime INTEGER NOT NULL,
                            normruntime INTEGER NOT NULL,
+                           cputime INTEGER NOT NULL,
+                           normcputime INTEGER NOT NULL,
                            starttime INTEGER NOT NULL,
                            stoptime INTEGER NOT NULL
                        )
@@ -171,6 +173,8 @@ async def create_summary_db(config, records):
                             recordid,
                             runtime,
                             normruntime,
+                            cputime,
+                            normcputime,
                             starttime,
                             stoptime
                         )
@@ -178,7 +182,7 @@ async def create_summary_db(config, records):
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
-                            ?, ?
+                            ?, ?, ?, ?
                         )
                         """
 
@@ -202,6 +206,8 @@ async def create_summary_db(config, records):
     infrastructure = config["site"].get("infrastructure_type")
     benchmark_name = config["auditor"].get("benchmark_name")
     cores_name = config["auditor"].get("cores_name")
+    cpu_time_name = config["auditor"].get("cpu_time_name")
+    nnodes_name = config["auditor"].get("nnodes_name")
 
     for r in records:
         if sites_to_report != "all":
@@ -233,9 +239,12 @@ async def create_summary_db(config, records):
                 for s in c.scores:
                     if s.name == benchmark_name:
                         benchmark_value = s.factor
+            elif c.name == cpu_time_name:
+                cputime = c.amount
 
         norm_runtime = r.runtime * benchmark_value
-
+        norm_cputime = cputime * benchmark_value
+        
         data_tuple = (
             site_name,
             submit_host,
@@ -249,6 +258,8 @@ async def create_summary_db(config, records):
             r.record_id,
             r.runtime,
             norm_runtime,
+            cputime,
+            norm_cputime,
             r.start_time.replace(tzinfo=pytz.utc).timestamp(),
             r.stop_time.replace(tzinfo=pytz.utc).timestamp(),
         )
@@ -371,6 +382,8 @@ async def group_summary_db(summary_db, filter_by: (int, int, str) = None):
                         COUNT(recordid) as jobcount,
                         SUM(runtime) as runtime,
                         SUM(normruntime) as norm_runtime,
+                        SUM(cputime) as cputime,
+                        SUM(normcputime) as norm_cputime,
                         MIN(stoptime) as min_stoptime,
                         MAX(stoptime) as max_stoptime
                  FROM records
@@ -434,9 +447,9 @@ async def create_summary(grouped_summary_list):
         summary += f"EarliestEndTime: {entry['min_stoptime']}\n"
         summary += f"LatestEndTime: {entry['max_stoptime']}\n"
         summary += f"WallDuration : {entry['runtime']}\n"
-        summary += f"CpuDuration: {entry['runtime']}\n"
+        summary += f"CpuDuration: {entry['cputime']}\n"
         summary += f"NormalisedWallDuration: {entry['norm_runtime']}\n"
-        summary += f"NormalisedCpuDuration: {entry['norm_runtime']}\n"
+        summary += f"NormalisedCpuDuration: {entry['norm_cputime']}\n"
         summary += f"NumberOfJobs: {entry['jobcount']}\n"
         summary += "%%\n"
 
