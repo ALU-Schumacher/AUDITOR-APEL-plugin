@@ -4,11 +4,13 @@ from apel_plugin import (
     get_begin_previous_month,
     create_time_db,
     get_time_db,
+    sign_msg,
 )
 from datetime import datetime
 import pytz
 import aiosqlite
 import os
+import subprocess
 
 
 @pytest.mark.asyncio
@@ -108,3 +110,43 @@ class TestAPELPlugin:
             os.remove(path)
 
             assert result == [(time_stamp, datetime(1970, 1, 1, 0, 0, 0))]
+
+    async def test_sign_msg(self):
+        result = await sign_msg(
+            "tests/test_cert.cert", "tests/test_key.key", "test"
+        )
+
+        with open("/tmp/signed_msg.txt", "wb") as msg_file:
+            msg_file.write(result)
+
+        bashCommand = "openssl smime -verify -in /tmp/signed_msg.txt -noverify"
+        process = subprocess.Popen(
+            bashCommand.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        process.communicate()
+
+        assert process.returncode == 0
+
+    async def test_sign_msg_fail(self):
+        with pytest.raises(Exception) as pytest_error:
+            await sign_msg(
+                "tests/nofolder/test_cert.cert",
+                "tests/no/folder/test_key.key",
+                "test",
+            )
+        assert pytest_error.type == FileNotFoundError
+
+        result = await sign_msg(
+            "tests/test_cert.cert", "tests/test_key.key", "test"
+        )
+
+        with open("/tmp/signed_msg.txt", "wb") as msg_file:
+            msg_file.write(result.replace(b"test", b"TEST"))
+
+        bashCommand = "openssl smime -verify -in /tmp/signed_msg.txt -noverify"
+        process = subprocess.Popen(
+            bashCommand.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        process.communicate()
+
+        assert process.returncode == 4

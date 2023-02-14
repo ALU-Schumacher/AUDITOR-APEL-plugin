@@ -16,8 +16,8 @@ dependencies = [
 
 [project.optional-dependencies]
 style = [
-       "black",
-       "flake8",
+      "black",
+      "flake8",
 ]
 tests = [
       "pytest",
@@ -36,3 +36,12 @@ branch = true
 [tool.black]
 line-length = 79
 include = '\.pyi?$'
+
+[tool.pytest.ini_options]
+addopts = "-v --cov"
+testpaths = [
+	  "tests",
+]
+filterwarnings = [
+	       "ignore::DeprecationWarning",
+]
