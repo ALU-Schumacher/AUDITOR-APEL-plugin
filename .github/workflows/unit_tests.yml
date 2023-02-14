@@ -23,7 +23,7 @@ jobs:
           pip install --upgrade pip
           pip install -e .[tests]
       - name: Run pytest
-        run: pytest -v --cov
+        run: pytest
       - name: Upload coverage
         uses: codecov/codecov-action@v3
         with:

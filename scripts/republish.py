@@ -23,6 +23,9 @@ from apel_plugin import (
 
 
 async def run(config, args, client):
+    client_cert = config["authentication"].get("client_cert")
+    client_key = config["authentication"].get("client_key")
+
     month = args.month
     year = args.year
     site = args.site
@@ -39,7 +42,7 @@ async def run(config, args, client):
     )
     summary = await create_summary(grouped_summary_list)
     logging.debug(summary)
-    signed_summary = await sign_msg(config, summary)
+    signed_summary = await sign_msg(client_cert, client_key, summary)
     logging.debug(signed_summary)
     encoded_summary = base64.b64encode(signed_summary).decode("utf-8")
     logging.debug(encoded_summary)

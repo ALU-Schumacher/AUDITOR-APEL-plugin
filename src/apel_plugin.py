@@ -492,10 +492,7 @@ async def get_token(config):
     return token
 
 
-async def sign_msg(config, msg):
-    client_cert = config["authentication"].get("client_cert")
-    client_key = config["authentication"].get("client_key")
-
+async def sign_msg(client_cert, client_key, msg):
     with open(client_cert, "rb") as cc:
         cert = x509.load_pem_x509_certificate(cc.read())
 
