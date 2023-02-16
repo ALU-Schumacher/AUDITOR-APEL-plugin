@@ -5,6 +5,7 @@ from apel_plugin import (
     create_time_db,
     get_time_db,
     sign_msg,
+    get_start_time,
 )
 from datetime import datetime
 import pytz
@@ -150,3 +151,37 @@ class TestAPELPlugin:
         process.communicate()
 
         assert process.returncode == 4
+
+    async def test_get_start_time(self):
+        path = ":memory:"
+        publish_since_list = [
+            "1970-01-01 00:00:00+00:00",
+            "2020-01-01 17:23:00+00:00",
+            "2022-12-17 20:20:20+01:00",
+        ]
+
+        for publish_since in publish_since_list:
+            time_db = await create_time_db(publish_since, path)
+            result = await get_start_time(time_db)
+            await time_db.close()
+            time_dt = datetime.strptime(publish_since, "%Y-%m-%d %H:%M:%S%z")
+            time_dt_utc = time_dt.replace(tzinfo=pytz.utc)
+
+            assert result == time_dt_utc
+
+    async def test_get_start_time_fail(self):
+        path = ":memory:"
+        publish_since = "1970-01-01 00:00:00+00:00"
+
+        time_db = await create_time_db(publish_since, path)
+        drop_column = "ALTER TABLE times DROP last_end_time"
+
+        cur = await time_db.cursor()
+        await cur.execute(drop_column)
+        await time_db.commit()
+        await cur.close()
+        with pytest.raises(Exception) as pytest_error:
+            await get_start_time(time_db)
+        await time_db.close()
+
+        assert pytest_error.type == aiosqlite.OperationalError
