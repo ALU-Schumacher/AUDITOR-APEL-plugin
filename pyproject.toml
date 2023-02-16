@@ -7,7 +7,7 @@ name = "apel_plugin"
 version = "0.1.0"
 requires-python = ">=3.7"
 dependencies = [
-	     "python-auditor==0.0.6",
+	     "python-auditor==0.0.7",
 	     "pytz==2022.7.1",
 	     "aiosqlite==0.18.0",
 	     "requests==2.28.2",
