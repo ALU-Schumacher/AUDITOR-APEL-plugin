@@ -7,6 +7,7 @@ from apel_plugin import (
     sign_msg,
     get_start_time,
     get_report_time,
+    update_time_db,
 )
 from datetime import datetime
 import pytz
@@ -195,7 +196,7 @@ class TestAPELPlugin:
         result = await get_report_time(time_db)
         await time_db.close()
 
-        initial_report_time = datetime(1970, 1, 1, 0, 0)
+        initial_report_time = datetime(1970, 1, 1, 0, 0, 0)
 
         assert result == initial_report_time
 
@@ -215,3 +216,81 @@ class TestAPELPlugin:
         await time_db.close()
 
         assert pytest_error.type == aiosqlite.OperationalError
+
+    async def test_update_time_db(self):
+        path = ":memory:"
+        publish_since = "1970-01-01 00:00:00+00:00"
+
+        time_db = await create_time_db(publish_since, path)
+        cur = await time_db.cursor()
+        cur.row_factory = lambda cursor, row: row[0]
+
+        stop_time_list = [
+            datetime(1984, 3, 3, 0, 0, 0),
+            datetime(2022, 12, 23, 12, 44, 23),
+            datetime(1999, 10, 1, 23, 17, 45),
+        ]
+        report_time_list = [
+            datetime(1993, 4, 4, 0, 0, 0),
+            datetime(2100, 8, 19, 14, 16, 11),
+            datetime(1887, 2, 27, 0, 11, 31),
+        ]
+
+        for stop_time in stop_time_list:
+            for report_time in report_time_list:
+                await update_time_db(time_db, stop_time, report_time)
+
+                await cur.execute("SELECT last_end_time FROM times")
+                last_end_time_row = await cur.fetchall()
+                last_end_time = last_end_time_row[0][0]
+
+                assert last_end_time == stop_time.strftime("%Y-%m-%d %H:%M:%S")
+
+                await cur.execute("SELECT last_report_time FROM times")
+                last_report_time_row = await cur.fetchall()
+                last_report_time = last_report_time_row[0][0]
+
+                assert last_report_time == report_time
+
+                await update_time_db(
+                    time_db, stop_time.timestamp(), report_time
+                )
+
+                await cur.execute("SELECT last_end_time FROM times")
+                last_end_time_row = await cur.fetchall()
+                last_end_time = last_end_time_row[0][0]
+
+                assert last_end_time == stop_time.timestamp()
+
+        await cur.close()
+        await time_db.close()
+
+    async def test_update_time_db_fail(self):
+        path = ":memory:"
+        publish_since = "1970-01-01 00:00:00+00:00"
+
+        time_db = await create_time_db(publish_since, path)
+        cur = await time_db.cursor()
+        cur.row_factory = lambda cursor, row: row[0]
+
+        stop_time = datetime(1984, 3, 3, 0, 0, 0)
+        report_time = datetime(2032, 11, 5, 12, 12, 15).timestamp()
+
+        await update_time_db(time_db, stop_time, report_time)
+
+        with pytest.raises(Exception) as pytest_error:
+            await cur.execute("SELECT last_report_time FROM times")
+
+        assert pytest_error.type == ValueError
+
+        drop_column = "ALTER TABLE times DROP last_report_time"
+        await cur.execute(drop_column)
+        await time_db.commit()
+
+        with pytest.raises(Exception) as pytest_error:
+            await update_time_db(time_db, stop_time, report_time)
+
+        assert pytest_error.type == aiosqlite.OperationalError
+
+        await cur.close()
+        await time_db.close()
