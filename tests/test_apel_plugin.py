@@ -6,6 +6,7 @@ from apel_plugin import (
     get_time_db,
     sign_msg,
     get_start_time,
+    get_report_time,
 )
 from datetime import datetime
 import pytz
@@ -182,6 +183,35 @@ class TestAPELPlugin:
         await cur.close()
         with pytest.raises(Exception) as pytest_error:
             await get_start_time(time_db)
+        await time_db.close()
+
+        assert pytest_error.type == aiosqlite.OperationalError
+
+    async def test_get_report_time(self):
+        path = ":memory:"
+        publish_since = "1970-01-01 00:00:00+00:00"
+
+        time_db = await create_time_db(publish_since, path)
+        result = await get_report_time(time_db)
+        await time_db.close()
+
+        initial_report_time = datetime(1970, 1, 1, 0, 0)
+
+        assert result == initial_report_time
+
+    async def test_get_report_time_fail(self):
+        path = ":memory:"
+        publish_since = "1970-01-01 00:00:00+00:00"
+
+        time_db = await create_time_db(publish_since, path)
+        drop_column = "ALTER TABLE times DROP last_report_time"
+
+        cur = await time_db.cursor()
+        await cur.execute(drop_column)
+        await time_db.commit()
+        await cur.close()
+        with pytest.raises(Exception) as pytest_error:
+            await get_report_time(time_db)
         await time_db.close()
 
         assert pytest_error.type == aiosqlite.OperationalError
