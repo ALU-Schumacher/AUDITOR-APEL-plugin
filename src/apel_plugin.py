@@ -197,13 +197,12 @@ async def create_summary_db(config, records):
         logging.critical(e)
         raise e
 
-    sites_to_report = config["site"].get("sites_to_report")
-
     try:
         site_name_mapping = json.loads(config["site"].get("site_name_mapping"))
     except TypeError:
         site_name_mapping = None
 
+    sites_to_report = config["site"].get("sites_to_report")
     vo_mapping = json.loads(config["uservo"].get("vo_mapping"))
     submit_host = config["site"].get("submit_host")
     infrastructure = config["site"].get("infrastructure_type")
@@ -211,26 +210,31 @@ async def create_summary_db(config, records):
     cores_name = config["auditor"].get("cores_name")
     cpu_time_name = config["auditor"].get("cpu_time_name")
     nnodes_name = config["auditor"].get("nnodes_name")
+    meta_key_site = config["auditor"].get("meta_key_site")
+    meta_key_user = config["auditor"].get("meta_key_user")
 
     for r in records:
+        site_id = r.meta.get(meta_key_site)[0]
+        user_id = r.meta.get(meta_key_user)[0]
+
         if sites_to_report != "all":
-            if r.site_id not in json.loads(sites_to_report):
+            if site_id not in json.loads(sites_to_report):
                 continue
         if site_name_mapping is not None:
             try:
-                site_name = site_name_mapping[r.site_id]
+                site_name = site_name_mapping[site_id]
             except KeyError:
                 logging.critical(
-                    f"No site name mapping defined for site {r.site_id}"
+                    f"No site name mapping defined for site {site_id}"
                 )
                 sys.exit(1)
         else:
-            site_name = r.site_id
+            site_name = site_id
 
-        vo_info = await regex_dict_lookup(r.user_id, vo_mapping)
+        vo_info = await regex_dict_lookup(user_id, vo_mapping)
         if vo_info is None:
             logging.critical(
-                f"User {r.user_id} not matched in {vo_mapping.keys()}"
+                f"User {user_id} not matched in {vo_mapping.keys()}"
             )
             raise KeyError
 
@@ -241,7 +245,7 @@ async def create_summary_db(config, records):
                 cpucount = c.amount
                 for s in c.scores:
                     if s.name == benchmark_name:
-                        benchmark_value = s.factor
+                        benchmark_value = s.value
             elif c.name == cpu_time_name:
                 cputime = c.amount
             elif c.name == nnodes_name:
@@ -325,21 +329,25 @@ async def create_sync_db(config, records):
         site_name_mapping = None
 
     submit_host = config["site"].get("submit_host")
+    meta_key_site = config["auditor"].get("meta_key_site")
 
     for r in records:
+        site_id = r.meta.get(meta_key_site)[0]
+
         if sites_to_report != "all":
-            if r.site_id not in json.loads(sites_to_report):
+            if site_id not in json.loads(sites_to_report):
                 continue
         if site_name_mapping is not None:
             try:
-                site_name = site_name_mapping[r.site_id]
+                site_name = site_name_mapping[site_id]
             except KeyError:
                 logging.critical(
-                    f"No site name mapping defined for site {r.site_id}"
+                    f"No site name mapping defined for site {site_id}"
                 )
                 sys.exit(1)
         else:
-            site_name = r.site_id
+            site_name = site_id
+
         year = r.stop_time.replace(tzinfo=pytz.utc).year
         month = r.stop_time.replace(tzinfo=pytz.utc).month
 
