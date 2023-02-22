@@ -8,12 +8,41 @@ from apel_plugin import (
     get_start_time,
     get_report_time,
     update_time_db,
+    create_summary_db,
 )
 from datetime import datetime
 import pytz
 import aiosqlite
 import os
 import subprocess
+import configparser
+import pyauditor
+from unittest.mock import patch, PropertyMock
+import ast
+
+
+def create_rec(rec_values, conf):
+    rec = pyauditor.Record(rec_values["rec_id"], rec_values["start_time"])
+    rec.with_stop_time(rec_values["stop_time"])
+    rec.with_component(
+        pyauditor.Component(
+            conf["cores_name"], rec_values["n_cores"]
+        ).with_score(
+            pyauditor.Score(conf["benchmark_name"], rec_values["hepscore"])
+        )
+    )
+    rec.with_component(
+        pyauditor.Component(conf["cpu_time_name"], rec_values["tot_cpu"])
+    )
+    rec.with_component(
+        pyauditor.Component(conf["nnodes_name"], rec_values["n_nodes"])
+    )
+    meta = pyauditor.Meta()
+    meta.insert(conf["meta_key_site"], [rec_values["site"]])
+    meta.insert(conf["meta_key_user"], [rec_values["user"]])
+    rec.with_meta(meta)
+
+    return rec
 
 
 @pytest.mark.asyncio
@@ -25,13 +54,13 @@ class TestAPELPlugin:
 
         dict = {"^a": "apple_in_dict", "^b": "banana_in_dict"}
 
-        result = await regex_dict_lookup(term_a, dict)
+        result = regex_dict_lookup(term_a, dict)
         assert result == "apple_in_dict"
 
-        result = await regex_dict_lookup(term_b, dict)
+        result = regex_dict_lookup(term_b, dict)
         assert result == "banana_in_dict"
 
-        result = await regex_dict_lookup(term_c, dict)
+        result = regex_dict_lookup(term_c, dict)
         assert result is None
 
     async def test_get_begin_previous_month(self):
@@ -294,3 +323,189 @@ class TestAPELPlugin:
 
         await cur.close()
         await time_db.close()
+
+    async def test_create_summary_db(self):
+        site_name_mapping = (
+            '{"test-site-1": "TEST_SITE_1", "test-site-2": "TEST_SITE_2"}'
+        )
+        sites_to_report = '["test-site-1", "test-site-2"]'
+        submit_host = "https://xxx.test.submit_host.de:1234/xxx"
+        infrastructure_type = "grid"
+        benchmark_name = "HEPSPEC06"
+        cores_name = "Cores"
+        cpu_time_name = "TotalCPU"
+        nnodes_name = "NNodes"
+        meta_key_site = "site_id"
+        meta_key_user = "user_id"
+        vo_mapping = (
+            '{"^first": {"vo": "first_vo", "vogroup": "/first_vogroup", '
+            '"vorole": "Role=NULL"}, "^second": {"vo": "second_vo", '
+            '"vogroup": "/second_vogroup", "vorole": "Role=production"}}'
+        )
+
+        conf = configparser.ConfigParser()
+        conf["site"] = {
+            "site_name_mapping": site_name_mapping,
+            "sites_to_report": sites_to_report,
+            "submit_host": submit_host,
+            "infrastructure_type": infrastructure_type,
+        }
+        conf["auditor"] = {
+            "benchmark_name": benchmark_name,
+            "cores_name": cores_name,
+            "cpu_time_name": cpu_time_name,
+            "nnodes_name": nnodes_name,
+            "meta_key_site": meta_key_site,
+            "meta_key_user": meta_key_user,
+        }
+        conf["uservo"] = {"vo_mapping": vo_mapping}
+
+        runtime = 55
+
+        rec_1_values = {
+            "rec_id": "test_record_1",
+            "start_time": datetime(1984, 3, 3, 0, 0, 0),
+            "stop_time": datetime(1985, 3, 3, 0, 0, 0),
+            "n_cores": 8,
+            "hepscore": 10.0,
+            "tot_cpu": 15520000,
+            "n_nodes": 1,
+            "site": "test-site-1",
+            "user": "first_user",
+        }
+
+        rec_2_values = {
+            "rec_id": "test_record_2",
+            "start_time": datetime(2023, 1, 1, 14, 24, 11),
+            "stop_time": datetime(2023, 1, 2, 7, 11, 45),
+            "n_cores": 1,
+            "hepscore": 23.0,
+            "tot_cpu": 12234325,
+            "n_nodes": 2,
+            "site": "test-site-2",
+            "user": "second_user",
+        }
+
+        rec_value_list = [rec_1_values, rec_2_values]
+        records = []
+
+        with patch(
+            "pyauditor.Record.runtime", new_callable=PropertyMock
+        ) as mocked_runtime:
+            mocked_runtime.return_value = runtime
+
+            for r_values in rec_value_list:
+                rec = create_rec(r_values, conf["auditor"])
+                records.append(rec)
+
+            result = await create_summary_db(conf, records)
+
+        cur = await result.cursor()
+
+        await cur.execute("SELECT * FROM records")
+        content = await cur.fetchall()
+
+        await cur.close()
+        await result.close()
+
+        for idx, rec_values in enumerate(rec_value_list):
+            assert (
+                content[idx][0]
+                == ast.literal_eval(site_name_mapping)[rec_values["site"]]
+            )
+            assert content[idx][1] == submit_host
+            assert (
+                content[idx][2]
+                == regex_dict_lookup(
+                    rec_values["user"], ast.literal_eval(vo_mapping)
+                )["vo"]
+            )
+            assert (
+                content[idx][3]
+                == regex_dict_lookup(
+                    rec_values["user"], ast.literal_eval(vo_mapping)
+                )["vogroup"]
+            )
+            assert (
+                content[idx][4]
+                == regex_dict_lookup(
+                    rec_values["user"], ast.literal_eval(vo_mapping)
+                )["vorole"]
+            )
+            assert content[idx][5] == infrastructure_type
+            assert content[idx][6] == rec_values["stop_time"].year
+            assert content[idx][7] == rec_values["stop_time"].month
+            assert content[idx][8] == rec_values["n_cores"]
+            assert content[idx][9] == rec_values["n_nodes"]
+            assert content[idx][10] == rec_values["rec_id"]
+            assert content[idx][11] == runtime
+            assert content[idx][12] == runtime * rec_values["hepscore"]
+            assert content[idx][13] == rec_values["tot_cpu"]
+            assert (
+                content[idx][14]
+                == rec_values["tot_cpu"] * rec_values["hepscore"]
+            )
+            assert (
+                content[idx][15]
+                == rec_values["start_time"]
+                .replace(tzinfo=pytz.utc)
+                .timestamp()
+            )
+            assert (
+                content[idx][16]
+                == rec_values["stop_time"].replace(tzinfo=pytz.utc).timestamp()
+            )
+
+        conf["site"] = {
+            "sites_to_report": sites_to_report,
+            "submit_host": submit_host,
+            "infrastructure_type": infrastructure_type,
+        }
+
+        records = []
+
+        with patch(
+            "pyauditor.Record.runtime", new_callable=PropertyMock
+        ) as mocked_runtime:
+            mocked_runtime.return_value = runtime
+
+            for r_values in rec_value_list:
+                rec = create_rec(r_values, conf["auditor"])
+                records.append(rec)
+
+            result = await create_summary_db(conf, records)
+
+        cur = await result.cursor()
+
+        await cur.execute("SELECT * FROM records")
+        content = await cur.fetchall()
+
+        for idx, rec_values in enumerate(rec_value_list):
+            assert content[idx][0] == rec_values["site"]
+
+        await cur.close()
+        await result.close()
+
+        rec_2_values["site"] = "test-site-3"
+        records = []
+
+        with patch(
+            "pyauditor.Record.runtime", new_callable=PropertyMock
+        ) as mocked_runtime:
+            mocked_runtime.return_value = runtime
+
+            for r_values in rec_value_list:
+                rec = create_rec(r_values, conf["auditor"])
+                records.append(rec)
+
+            result = await create_summary_db(conf, records)
+
+        cur = await result.cursor()
+
+        await cur.execute("SELECT * FROM records")
+        content = await cur.fetchall()
+
+        assert len(content) == 1
+
+        await cur.close()
+        await result.close()

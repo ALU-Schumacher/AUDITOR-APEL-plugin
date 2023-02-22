@@ -29,7 +29,7 @@ async def get_begin_previous_month(current_time):
     return begin_previous_month_utc
 
 
-async def regex_dict_lookup(term, dict):
+def regex_dict_lookup(term, dict):
     result = None
     for key in dict:
         if re.search(key, term):
@@ -230,7 +230,7 @@ async def create_summary_db(config, records):
             site_name = site_id
 
         user_id = r.meta.get(meta_key_user)[0]
-        vo_info = await regex_dict_lookup(user_id, vo_mapping)
+        vo_info = regex_dict_lookup(user_id, vo_mapping)
         if vo_info is None:
             logging.critical(
                 f"User {user_id} not matched in {vo_mapping.keys()}"
