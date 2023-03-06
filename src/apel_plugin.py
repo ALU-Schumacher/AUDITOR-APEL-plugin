@@ -137,7 +137,7 @@ async def update_time_db(conn, stop_time, report_time):
         raise e
 
 
-async def create_summary_db(config, records):
+def create_summary_db(config, records):
     create_table_sql = """
                        CREATE TABLE IF NOT EXISTS records(
                            site TEXT NOT NULL,
@@ -190,9 +190,9 @@ async def create_summary_db(config, records):
                         """
 
     try:
-        conn = await aiosqlite.connect(":memory:")
-        cur = await conn.cursor()
-        await cur.execute(create_table_sql)
+        conn = sqlite3.connect(":memory:")
+        cur = conn.cursor()
+        cur.execute(create_table_sql)
     except Error as e:
         logging.critical(e)
         raise e
@@ -225,7 +225,7 @@ async def create_summary_db(config, records):
                 logging.critical(
                     f"No site name mapping defined for site {site_id}"
                 )
-                sys.exit(1)
+                raise KeyError
         else:
             site_name = site_id
 
@@ -251,14 +251,14 @@ async def create_summary_db(config, records):
             logging.debug(f"cputime: {cputime}")
         except KeyError:
             logging.critical(f"no {cpu_time_name} in components")
-            sys.exit(1)
+            raise KeyError
 
         try:
             nodecount = component_dict[nnodes_name].amount
             logging.debug(f"nodecount: {nodecount}")
         except KeyError:
             logging.critical(f"no {nnodes_name} in components")
-            sys.exit(1)
+            raise KeyError
 
         try:
             cpucount = component_dict[cores_name].amount
@@ -267,14 +267,14 @@ async def create_summary_db(config, records):
                 score_dict[s.name] = s.value
         except KeyError:
             logging.critical(f"no {cores_name} in components")
-            sys.exit(1)
+            raise KeyError
 
         try:
             benchmark_value = score_dict[benchmark_name]
             logging.debug(f"score: {benchmark_value}")
         except KeyError:
             logging.critical(f"no {benchmark_name} in scores")
-            sys.exit(1)
+            raise KeyError
 
         norm_runtime = r.runtime * benchmark_value
         norm_cputime = cputime * benchmark_value
@@ -299,14 +299,14 @@ async def create_summary_db(config, records):
             r.stop_time.replace(tzinfo=pytz.utc).timestamp(),
         )
         try:
-            await cur.execute(insert_record_sql, data_tuple)
+            cur.execute(insert_record_sql, data_tuple)
         except Error as e:
             logging.critical(e)
             raise e
 
     try:
-        await conn.commit()
-        await cur.close()
+        conn.commit()
+        cur.close()
     except Error as e:
         logging.critical(e)
         raise e

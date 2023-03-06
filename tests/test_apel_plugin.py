@@ -398,15 +398,15 @@ class TestAPELPlugin:
                 rec = create_rec(r_values, conf["auditor"])
                 records.append(rec)
 
-            result = await create_summary_db(conf, records)
+            result = create_summary_db(conf, records)
 
-        cur = await result.cursor()
+        cur = result.cursor()
 
-        await cur.execute("SELECT * FROM records")
-        content = await cur.fetchall()
+        cur.execute("SELECT * FROM records")
+        content = cur.fetchall()
 
-        await cur.close()
-        await result.close()
+        cur.close()
+        result.close()
 
         for idx, rec_values in enumerate(rec_value_list):
             assert (
@@ -473,18 +473,18 @@ class TestAPELPlugin:
                 rec = create_rec(r_values, conf["auditor"])
                 records.append(rec)
 
-            result = await create_summary_db(conf, records)
+            result = create_summary_db(conf, records)
 
-        cur = await result.cursor()
+        cur = result.cursor()
 
-        await cur.execute("SELECT * FROM records")
-        content = await cur.fetchall()
+        cur.execute("SELECT * FROM records")
+        content = cur.fetchall()
 
         for idx, rec_values in enumerate(rec_value_list):
             assert content[idx][0] == rec_values["site"]
 
-        await cur.close()
-        await result.close()
+        cur.close()
+        result.close()
 
         rec_2_values["site"] = "test-site-3"
         records = []
@@ -498,14 +498,130 @@ class TestAPELPlugin:
                 rec = create_rec(r_values, conf["auditor"])
                 records.append(rec)
 
-            result = await create_summary_db(conf, records)
+            result = create_summary_db(conf, records)
 
-        cur = await result.cursor()
+        cur = result.cursor()
 
-        await cur.execute("SELECT * FROM records")
-        content = await cur.fetchall()
+        cur.execute("SELECT * FROM records")
+        content = cur.fetchall()
 
         assert len(content) == 1
 
-        await cur.close()
-        await result.close()
+        cur.close()
+        result.close()
+
+    async def test_create_summary_db_fail(self):
+        site_name_mapping = (
+            '{"test-site-1": "TEST_SITE_1", "test-site-2": "TEST_SITE_2"}'
+        )
+        sites_to_report = '["test-site-1", "test-site-2"]'
+        submit_host = "https://xxx.test.submit_host.de:1234/xxx"
+        infrastructure_type = "grid"
+        benchmark_name = "HEPSPEC06"
+        cores_name = "Cores"
+        cpu_time_name = "TotalCPU"
+        nnodes_name = "NNodes"
+        meta_key_site = "site_id"
+        meta_key_user = "user_id"
+        vo_mapping = (
+            '{"^first": {"vo": "first_vo", "vogroup": "/first_vogroup", '
+            '"vorole": "Role=NULL"}, "^second": {"vo": "second_vo", '
+            '"vogroup": "/second_vogroup", "vorole": "Role=production"}}'
+        )
+
+        conf = configparser.ConfigParser()
+        conf["site"] = {
+            "site_name_mapping": site_name_mapping,
+            "sites_to_report": sites_to_report,
+            "submit_host": submit_host,
+            "infrastructure_type": infrastructure_type,
+        }
+        conf["auditor"] = {
+            "benchmark_name": benchmark_name,
+            "cores_name": cores_name,
+            "cpu_time_name": cpu_time_name,
+            "nnodes_name": nnodes_name,
+            "meta_key_site": meta_key_site,
+            "meta_key_user": meta_key_user,
+        }
+        conf["uservo"] = {"vo_mapping": vo_mapping}
+
+        runtime = 55
+
+        rec_1_values = {
+            "rec_id": "test_record_1",
+            "start_time": datetime(1984, 3, 3, 0, 0, 0),
+            "stop_time": datetime(1985, 3, 3, 0, 0, 0),
+            "n_cores": 8,
+            "hepscore": 10.0,
+            "tot_cpu": 15520000,
+            "n_nodes": 1,
+            "site": "test-site-1",
+            "user": "first_user",
+        }
+
+        rec_2_values = {
+            "rec_id": "test_record_2",
+            "start_time": datetime(2023, 1, 1, 14, 24, 11),
+            "stop_time": datetime(2023, 1, 2, 7, 11, 45),
+            "n_cores": 1,
+            "hepscore": 23.0,
+            "tot_cpu": 12234325,
+            "n_nodes": 2,
+            "site": "test-site-2",
+            "user": "second_user",
+        }
+
+        rec_value_list = [rec_1_values, rec_2_values]
+        records = []
+
+        with patch(
+            "pyauditor.Record.runtime", new_callable=PropertyMock
+        ) as mocked_runtime:
+            mocked_runtime.return_value = runtime
+
+            for r_values in rec_value_list:
+                rec = create_rec(r_values, conf["auditor"])
+                records.append(rec)
+
+            conf["auditor"]["cpu_time_name"] = "fail"
+            with pytest.raises(Exception) as pytest_error:
+                create_summary_db(conf, records)
+            assert pytest_error.type == KeyError
+
+            conf["auditor"]["cpu_time_name"] = "TotalCPU"
+            conf["auditor"]["nnodes_name"] = "fail"
+            with pytest.raises(Exception) as pytest_error:
+                create_summary_db(conf, records)
+            assert pytest_error.type == KeyError
+
+            conf["auditor"]["nnodes_name"] = "NNodes"
+            conf["auditor"]["cores_name"] = "fail"
+            with pytest.raises(Exception) as pytest_error:
+                create_summary_db(conf, records)
+            assert pytest_error.type == KeyError
+
+            conf["auditor"]["cores_name"] = "Cores"
+            conf["auditor"]["benchmark_name"] = "fail"
+            with pytest.raises(Exception) as pytest_error:
+                create_summary_db(conf, records)
+            assert pytest_error.type == KeyError
+
+            conf["auditor"]["benchmark_name"] = "HEPSPEC06"
+            conf["site"][
+                "site_name_mapping"
+            ] = '{"test-site-2": "TEST_SITE_2"}'
+            with pytest.raises(Exception) as pytest_error:
+                create_summary_db(conf, records)
+            assert pytest_error.type == KeyError
+
+            conf["site"][
+                "site_name_mapping"
+            ] = '{"test-site-1": "TEST_SITE_1", "test-site-2": "TEST_SITE_2"}'
+            conf["uservo"]["vo_mapping"] = (
+                '{"^second": {"vo": "second_vo", "vogroup": "/second_vogroup",'
+                ' "vorole": "Role=production"}}'
+            )
+            with pytest.raises(Exception) as pytest_error:
+                create_summary_db(conf, records)
+            assert pytest_error.type == KeyError
