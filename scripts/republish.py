@@ -36,7 +36,7 @@ async def run(config, args, client):
     token = await get_token(config)
     logging.debug(token)
 
-    summary_db = await create_summary_db(config, records)
+    summary_db = create_summary_db(config, records)
     grouped_summary_list = await group_summary_db(
         summary_db, filter_by=(month, year, site)
     )
