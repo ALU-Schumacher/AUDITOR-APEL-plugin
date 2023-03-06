@@ -239,16 +239,42 @@ async def create_summary_db(config, records):
 
         year = r.stop_time.replace(tzinfo=pytz.utc).year
         month = r.stop_time.replace(tzinfo=pytz.utc).month
+
+        component_dict = {}
+        score_dict = {}
+
         for c in r.components:
-            if c.name == cores_name:
-                cpucount = c.amount
-                for s in c.scores:
-                    if s.name == benchmark_name:
-                        benchmark_value = s.value
-            elif c.name == cpu_time_name:
-                cputime = c.amount
-            elif c.name == nnodes_name:
-                nodecount = c.amount
+            component_dict[c.name] = c
+
+        try:
+            cputime = component_dict[cpu_time_name].amount
+            logging.debug(f"cputime: {cputime}")
+        except KeyError:
+            logging.critical(f"no {cpu_time_name} in components")
+            sys.exit(1)
+
+        try:
+            nodecount = component_dict[nnodes_name].amount
+            logging.debug(f"nodecount: {nodecount}")
+        except KeyError:
+            logging.critical(f"no {nnodes_name} in components")
+            sys.exit(1)
+
+        try:
+            cpucount = component_dict[cores_name].amount
+            logging.debug(f"cpucount: {cpucount}")
+            for s in component_dict[cores_name].scores:
+                score_dict[s.name] = s.value
+        except KeyError:
+            logging.critical(f"no {cores_name} in components")
+            sys.exit(1)
+
+        try:
+            benchmark_value = score_dict[benchmark_name]
+            logging.debug(f"score: {benchmark_value}")
+        except KeyError:
+            logging.critical(f"no {benchmark_name} in scores")
+            sys.exit(1)
 
         norm_runtime = r.runtime * benchmark_value
         norm_cputime = cputime * benchmark_value
