@@ -12,7 +12,7 @@ from apel_plugin import (
 )
 from datetime import datetime
 import pytz
-import aiosqlite
+import sqlite3
 import os
 import subprocess
 import configparser
@@ -45,9 +45,8 @@ def create_rec(rec_values, conf):
     return rec
 
 
-@pytest.mark.asyncio
 class TestAPELPlugin:
-    async def test_regex_dict_lookup(self):
+    def test_regex_dict_lookup(self):
         term_a = "apple"
         term_b = "banana"
         term_c = "citrus"
@@ -63,17 +62,17 @@ class TestAPELPlugin:
         result = regex_dict_lookup(term_c, dict)
         assert result is None
 
-    async def test_get_begin_previous_month(self):
+    def test_get_begin_previous_month(self):
         time_a = datetime(2022, 10, 23, 12, 23, 55)
         time_b = datetime(1970, 1, 1, 00, 00, 00)
 
-        result = await get_begin_previous_month(time_a)
+        result = get_begin_previous_month(time_a)
         assert result == datetime(2022, 9, 1, 00, 00, 00, tzinfo=pytz.utc)
 
-        result = await get_begin_previous_month(time_b)
+        result = get_begin_previous_month(time_b)
         assert result == datetime(1969, 12, 1, 00, 00, 00, tzinfo=pytz.utc)
 
-    async def test_create_time_db(self):
+    def test_create_time_db(self):
         path = ":memory:"
         publish_since_list = [
             "1970-01-01 00:00:00+00:00",
@@ -82,32 +81,32 @@ class TestAPELPlugin:
         ]
 
         for publish_since in publish_since_list:
-            time_db = await create_time_db(publish_since, path)
-            cur = await time_db.cursor()
-            await cur.execute("SELECT * FROM times")
-            result = await cur.fetchall()
-            await cur.close()
-            await time_db.close()
+            time_db = create_time_db(publish_since, path)
+            cur = time_db.cursor()
+            cur.execute("SELECT * FROM times")
+            result = cur.fetchall()
+            cur.close()
+            time_db.close()
             time_dt = datetime.strptime(publish_since, "%Y-%m-%d %H:%M:%S%z")
             time_stamp = time_dt.replace(tzinfo=pytz.utc).timestamp()
 
             assert result == [(time_stamp, datetime(1970, 1, 1, 0, 0, 0))]
 
-    async def test_create_time_db_fail(self):
+    def test_create_time_db_fail(self):
         path = "/home/nonexistent/55/abc/time.db"
         publish_since = "1970-01-01 00:00:00+00:00"
 
         with pytest.raises(Exception) as pytest_error:
-            await create_time_db(publish_since, path)
-        assert pytest_error.type == aiosqlite.OperationalError
+            create_time_db(publish_since, path)
+        assert pytest_error.type == sqlite3.OperationalError
 
         publish_since = "1970-01-01"
 
         with pytest.raises(Exception) as pytest_error:
-            await create_time_db(publish_since, path)
+            create_time_db(publish_since, path)
         assert pytest_error.type == ValueError
 
-    async def test_get_time_db(self):
+    def test_get_time_db(self):
         path = "/tmp/nonexistent_55_abc_time.db"
         publish_since_list = [
             "1970-01-01 00:00:00+00:00",
@@ -116,12 +115,12 @@ class TestAPELPlugin:
         ]
 
         for publish_since in publish_since_list:
-            time_db = await get_time_db(publish_since, path)
-            cur = await time_db.cursor()
-            await cur.execute("SELECT * FROM times")
-            result = await cur.fetchall()
-            await cur.close()
-            await time_db.close()
+            time_db = get_time_db(publish_since, path)
+            cur = time_db.cursor()
+            cur.execute("SELECT * FROM times")
+            result = cur.fetchall()
+            cur.close()
+            time_db.close()
             time_dt = datetime.strptime(publish_since, "%Y-%m-%d %H:%M:%S%z")
             time_stamp = time_dt.replace(tzinfo=pytz.utc).timestamp()
             os.remove(path)
@@ -129,24 +128,22 @@ class TestAPELPlugin:
             assert result == [(time_stamp, datetime(1970, 1, 1, 0, 0, 0))]
 
         for publish_since in publish_since_list:
-            time_db = await create_time_db(publish_since, path)
-            await time_db.close()
-            time_db = await get_time_db(publish_since, path)
-            cur = await time_db.cursor()
-            await cur.execute("SELECT * FROM times")
-            result = await cur.fetchall()
-            await cur.close()
-            await time_db.close()
+            time_db = create_time_db(publish_since, path)
+            time_db.close()
+            time_db = get_time_db(publish_since, path)
+            cur = time_db.cursor()
+            cur.execute("SELECT * FROM times")
+            result = cur.fetchall()
+            cur.close()
+            time_db.close()
             time_dt = datetime.strptime(publish_since, "%Y-%m-%d %H:%M:%S%z")
             time_stamp = time_dt.replace(tzinfo=pytz.utc).timestamp()
             os.remove(path)
 
             assert result == [(time_stamp, datetime(1970, 1, 1, 0, 0, 0))]
 
-    async def test_sign_msg(self):
-        result = await sign_msg(
-            "tests/test_cert.cert", "tests/test_key.key", "test"
-        )
+    def test_sign_msg(self):
+        result = sign_msg("tests/test_cert.cert", "tests/test_key.key", "test")
 
         with open("/tmp/signed_msg.txt", "wb") as msg_file:
             msg_file.write(result)
@@ -159,18 +156,16 @@ class TestAPELPlugin:
 
         assert process.returncode == 0
 
-    async def test_sign_msg_fail(self):
+    def test_sign_msg_fail(self):
         with pytest.raises(Exception) as pytest_error:
-            await sign_msg(
+            sign_msg(
                 "tests/nofolder/test_cert.cert",
                 "tests/no/folder/test_key.key",
                 "test",
             )
         assert pytest_error.type == FileNotFoundError
 
-        result = await sign_msg(
-            "tests/test_cert.cert", "tests/test_key.key", "test"
-        )
+        result = sign_msg("tests/test_cert.cert", "tests/test_key.key", "test")
 
         with open("/tmp/signed_msg.txt", "wb") as msg_file:
             msg_file.write(result.replace(b"test", b"TEST"))
@@ -183,7 +178,7 @@ class TestAPELPlugin:
 
         assert process.returncode == 4
 
-    async def test_get_start_time(self):
+    def test_get_start_time(self):
         path = ":memory:"
         publish_since_list = [
             "1970-01-01 00:00:00+00:00",
@@ -192,66 +187,66 @@ class TestAPELPlugin:
         ]
 
         for publish_since in publish_since_list:
-            time_db = await create_time_db(publish_since, path)
-            result = await get_start_time(time_db)
-            await time_db.close()
+            time_db = create_time_db(publish_since, path)
+            result = get_start_time(time_db)
+            time_db.close()
             time_dt = datetime.strptime(publish_since, "%Y-%m-%d %H:%M:%S%z")
             time_dt_utc = time_dt.replace(tzinfo=pytz.utc)
 
             assert result == time_dt_utc
 
-    async def test_get_start_time_fail(self):
+    def test_get_start_time_fail(self):
         path = ":memory:"
         publish_since = "1970-01-01 00:00:00+00:00"
 
-        time_db = await create_time_db(publish_since, path)
+        time_db = create_time_db(publish_since, path)
         drop_column = "ALTER TABLE times DROP last_end_time"
 
-        cur = await time_db.cursor()
-        await cur.execute(drop_column)
-        await time_db.commit()
-        await cur.close()
+        cur = time_db.cursor()
+        cur.execute(drop_column)
+        time_db.commit()
+        cur.close()
         with pytest.raises(Exception) as pytest_error:
-            await get_start_time(time_db)
-        await time_db.close()
+            get_start_time(time_db)
+        time_db.close()
 
-        assert pytest_error.type == aiosqlite.OperationalError
+        assert pytest_error.type == sqlite3.OperationalError
 
-    async def test_get_report_time(self):
+    def test_get_report_time(self):
         path = ":memory:"
         publish_since = "1970-01-01 00:00:00+00:00"
 
-        time_db = await create_time_db(publish_since, path)
-        result = await get_report_time(time_db)
-        await time_db.close()
+        time_db = create_time_db(publish_since, path)
+        result = get_report_time(time_db)
+        time_db.close()
 
         initial_report_time = datetime(1970, 1, 1, 0, 0, 0)
 
         assert result == initial_report_time
 
-    async def test_get_report_time_fail(self):
+    def test_get_report_time_fail(self):
         path = ":memory:"
         publish_since = "1970-01-01 00:00:00+00:00"
 
-        time_db = await create_time_db(publish_since, path)
+        time_db = create_time_db(publish_since, path)
         drop_column = "ALTER TABLE times DROP last_report_time"
 
-        cur = await time_db.cursor()
-        await cur.execute(drop_column)
-        await time_db.commit()
-        await cur.close()
+        cur = time_db.cursor()
+        cur.execute(drop_column)
+        time_db.commit()
+        cur.close()
         with pytest.raises(Exception) as pytest_error:
-            await get_report_time(time_db)
-        await time_db.close()
+            get_report_time(time_db)
+        time_db.close()
 
-        assert pytest_error.type == aiosqlite.OperationalError
+        assert pytest_error.type == sqlite3.OperationalError
 
-    async def test_update_time_db(self):
+    def test_update_time_db(self):
         path = ":memory:"
         publish_since = "1970-01-01 00:00:00+00:00"
 
-        time_db = await create_time_db(publish_since, path)
-        cur = await time_db.cursor()
+        time_db = create_time_db(publish_since, path)
+        cur = time_db.cursor()
         cur.row_factory = lambda cursor, row: row[0]
 
         stop_time_list = [
@@ -267,64 +262,62 @@ class TestAPELPlugin:
 
         for stop_time in stop_time_list:
             for report_time in report_time_list:
-                await update_time_db(time_db, stop_time, report_time)
+                update_time_db(time_db, stop_time, report_time)
 
-                await cur.execute("SELECT last_end_time FROM times")
-                last_end_time_row = await cur.fetchall()
-                last_end_time = last_end_time_row[0][0]
+                cur.execute("SELECT last_end_time FROM times")
+                last_end_time_row = cur.fetchall()
+                last_end_time = last_end_time_row[0]
 
                 assert last_end_time == stop_time.strftime("%Y-%m-%d %H:%M:%S")
 
-                await cur.execute("SELECT last_report_time FROM times")
-                last_report_time_row = await cur.fetchall()
-                last_report_time = last_report_time_row[0][0]
+                cur.execute("SELECT last_report_time FROM times")
+                last_report_time_row = cur.fetchall()
+                last_report_time = last_report_time_row[0]
 
                 assert last_report_time == report_time
 
-                await update_time_db(
-                    time_db, stop_time.timestamp(), report_time
-                )
+                update_time_db(time_db, stop_time.timestamp(), report_time)
 
-                await cur.execute("SELECT last_end_time FROM times")
-                last_end_time_row = await cur.fetchall()
-                last_end_time = last_end_time_row[0][0]
+                cur.execute("SELECT last_end_time FROM times")
+                last_end_time_row = cur.fetchall()
+                last_end_time = last_end_time_row[0]
 
                 assert last_end_time == stop_time.timestamp()
 
-        await cur.close()
-        await time_db.close()
+        cur.close()
+        time_db.close()
 
-    async def test_update_time_db_fail(self):
+    def test_update_time_db_fail(self):
         path = ":memory:"
         publish_since = "1970-01-01 00:00:00+00:00"
 
-        time_db = await create_time_db(publish_since, path)
-        cur = await time_db.cursor()
+        time_db = create_time_db(publish_since, path)
+        cur = time_db.cursor()
         cur.row_factory = lambda cursor, row: row[0]
 
         stop_time = datetime(1984, 3, 3, 0, 0, 0)
         report_time = datetime(2032, 11, 5, 12, 12, 15).timestamp()
 
-        await update_time_db(time_db, stop_time, report_time)
+        update_time_db(time_db, stop_time, report_time)
 
         with pytest.raises(Exception) as pytest_error:
-            await cur.execute("SELECT last_report_time FROM times")
+            cur.execute("SELECT last_report_time FROM times")
 
         assert pytest_error.type == ValueError
 
         drop_column = "ALTER TABLE times DROP last_report_time"
-        await cur.execute(drop_column)
-        await time_db.commit()
+        cur.execute(drop_column)
+        time_db.commit()
 
         with pytest.raises(Exception) as pytest_error:
-            await update_time_db(time_db, stop_time, report_time)
+            update_time_db(time_db, stop_time, report_time)
 
-        assert pytest_error.type == aiosqlite.OperationalError
+        assert pytest_error.type == sqlite3.OperationalError
 
-        await cur.close()
-        await time_db.close()
+        cur.close()
+        time_db.close()
 
-    async def test_create_summary_db(self):
+    def test_create_summary_db(self):
         site_name_mapping = (
             '{"test-site-1": "TEST_SITE_1", "test-site-2": "TEST_SITE_2"}'
         )
@@ -510,7 +503,7 @@ class TestAPELPlugin:
         cur.close()
         result.close()
 
-    async def test_create_summary_db_fail(self):
+    def test_create_summary_db_fail(self):
         site_name_mapping = (
             '{"test-site-1": "TEST_SITE_1", "test-site-2": "TEST_SITE_2"}'
         )

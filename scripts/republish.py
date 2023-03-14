@@ -33,22 +33,22 @@ async def run(config, args, client):
     begin_month = datetime(year, month, 1).replace(tzinfo=pytz.utc)
 
     records = await client.get_stopped_since(begin_month)
-    token = await get_token(config)
+    token = get_token(config)
     logging.debug(token)
 
     summary_db = create_summary_db(config, records)
-    grouped_summary_list = await group_summary_db(
+    grouped_summary_list = group_summary_db(
         summary_db, filter_by=(month, year, site)
     )
-    summary = await create_summary(grouped_summary_list)
+    summary = create_summary(grouped_summary_list)
     logging.debug(summary)
-    signed_summary = await sign_msg(client_cert, client_key, summary)
+    signed_summary = sign_msg(client_cert, client_key, summary)
     logging.debug(signed_summary)
     encoded_summary = base64.b64encode(signed_summary).decode("utf-8")
     logging.debug(encoded_summary)
-    payload_summary = await build_payload(encoded_summary)
+    payload_summary = build_payload(encoded_summary)
     logging.debug(payload_summary)
-    post_summary = await send_payload(config, token, payload_summary)
+    post_summary = send_payload(config, token, payload_summary)
     logging.debug(post_summary.status_code)
 
 

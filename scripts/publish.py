@@ -10,6 +10,7 @@ from datetime import datetime
 import pytz
 import configparser
 import base64
+from time import sleep
 from apel_plugin import (
     get_token,
     get_time_db,
@@ -36,25 +37,25 @@ async def run(config, client):
     client_cert = config["authentication"].get("client_cert")
     client_key = config["authentication"].get("client_key")
 
-    token = await get_token(config)
+    token = get_token(config)
     logging.debug(token)
 
     while True:
-        time_db_conn = await get_time_db(publish_since, time_db_path)
-        last_report_time = await get_report_time(time_db_conn)
+        time_db_conn = get_time_db(publish_since, time_db_path)
+        last_report_time = get_report_time(time_db_conn)
         current_time = datetime.now()
         time_since_report = (current_time - last_report_time).total_seconds()
 
         if time_since_report < report_interval:
             logging.info("Not enough time since last report")
-            await time_db_conn.close()
-            await asyncio.sleep(report_interval - time_since_report)
+            time_db_conn.close()
+            sleep(report_interval - time_since_report)
             continue
         else:
             logging.info("Enough time since last report, create new report")
 
         try:
-            start_time = await get_start_time(time_db_conn)
+            start_time = get_start_time(time_db_conn)
             logging.info(f"Getting records since {start_time}")
             records_summary = await client.get_stopped_since(start_time)
             latest_stop_time = records_summary[-1].stop_time.replace(
@@ -62,42 +63,42 @@ async def run(config, client):
             )
             logging.debug(f"Latest stop time is {latest_stop_time}")
             summary_db = create_summary_db(config, records_summary)
-            grouped_summary_list = await group_summary_db(summary_db)
-            summary = await create_summary(grouped_summary_list)
+            grouped_summary_list = group_summary_db(summary_db)
+            summary = create_summary(grouped_summary_list)
             logging.debug(summary)
-            signed_summary = await sign_msg(client_cert, client_key, summary)
+            signed_summary = sign_msg(client_cert, client_key, summary)
             logging.debug(signed_summary)
             encoded_summary = base64.b64encode(signed_summary).decode("utf-8")
             logging.debug(encoded_summary)
-            payload_summary = await build_payload(encoded_summary)
+            payload_summary = build_payload(encoded_summary)
             logging.debug(payload_summary)
-            post_summary = await send_payload(config, token, payload_summary)
+            post_summary = send_payload(config, token, payload_summary)
             logging.debug(post_summary.status_code)
 
-            begin_previous_month = await get_begin_previous_month(current_time)
+            begin_previous_month = get_begin_previous_month(current_time)
             records_sync = await client.get_stopped_since(begin_previous_month)
-            sync_db = await create_sync_db(config, records_sync)
-            grouped_sync_list = await group_sync_db(sync_db)
-            sync = await create_sync(grouped_sync_list)
+            sync_db = create_sync_db(config, records_sync)
+            grouped_sync_list = group_sync_db(sync_db)
+            sync = create_sync(grouped_sync_list)
             logging.debug(sync)
-            signed_sync = await sign_msg(client_cert, client_key, sync)
+            signed_sync = sign_msg(client_cert, client_key, sync)
             logging.debug(signed_sync)
             encoded_sync = base64.b64encode(signed_sync).decode("utf-8")
             logging.debug(encoded_sync)
-            payload_sync = await build_payload(encoded_sync)
+            payload_sync = build_payload(encoded_sync)
             logging.debug(payload_sync)
-            post_sync = await send_payload(config, token, payload_sync)
+            post_sync = send_payload(config, token, payload_sync)
             logging.debug(post_sync.status_code)
 
             latest_report_time = datetime.now()
-            await update_time_db(
+            update_time_db(
                 time_db_conn, latest_stop_time.timestamp(), latest_report_time
             )
         except IndexError:
             logging.info("No new records, do nothing for now")
 
-        await time_db_conn.close()
-        await asyncio.sleep(report_interval)
+        time_db_conn.close()
+        sleep(report_interval)
 
 
 def main():
