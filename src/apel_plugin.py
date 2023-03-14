@@ -6,8 +6,7 @@
 import logging
 from pathlib import Path
 import sqlite3
-import aiosqlite
-from aiosqlite import Error
+from sqlite3 import Error
 from datetime import datetime, timedelta, time
 import pytz
 import json
@@ -19,7 +18,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import pkcs7
 
 
-async def get_begin_previous_month(current_time):
+def get_begin_previous_month(current_time):
     first_current_month = current_time.replace(day=1)
     previous_month = first_current_month - timedelta(days=1)
     first_previous_month = previous_month.replace(day=1)
@@ -38,19 +37,19 @@ def regex_dict_lookup(term, dict):
     return result
 
 
-async def get_time_db(publish_since, time_db_path):
+def get_time_db(publish_since, time_db_path):
     if Path(time_db_path).is_file():
-        conn = await aiosqlite.connect(
+        conn = sqlite3.connect(
             time_db_path,
             detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
         )
     else:
-        conn = await create_time_db(publish_since, time_db_path)
+        conn = create_time_db(publish_since, time_db_path)
 
     return conn
 
 
-async def create_time_db(publish_since, time_db_path):
+def create_time_db(publish_since, time_db_path):
     create_table_sql = """
                        CREATE TABLE IF NOT EXISTS times(
                            last_end_time INTEGER NOT NULL,
@@ -78,60 +77,62 @@ async def create_time_db(publish_since, time_db_path):
     )
 
     try:
-        conn = await aiosqlite.connect(
+        conn = sqlite3.connect(
             time_db_path,
             detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
         )
-        cur = await conn.cursor()
-        await cur.execute(create_table_sql)
-        await cur.execute(insert_sql, data_tuple)
-        await conn.commit()
-        await cur.close()
+        cur = conn.cursor()
+        cur.execute(create_table_sql)
+        cur.execute(insert_sql, data_tuple)
+        conn.commit()
+        cur.close()
         return conn
     except Error as e:
         logging.critical(e)
         raise e
 
 
-async def get_start_time(conn):
+def get_start_time(conn):
     try:
-        cur = await conn.cursor()
+        cur = conn.cursor()
         cur.row_factory = lambda cursor, row: row[0]
-        await cur.execute("SELECT last_end_time FROM times")
-        start_time_row = await cur.fetchall()
-        start_time = datetime.fromtimestamp(start_time_row[0][0], tz=pytz.utc)
-        await cur.close()
+        cur.execute("SELECT last_end_time FROM times")
+        start_time_row = cur.fetchall()
+        logging.debug(start_time_row)
+        start_time = datetime.fromtimestamp(start_time_row[0], tz=pytz.utc)
+        cur.close()
         return start_time
     except Error as e:
         logging.critical(e)
         raise e
 
 
-async def get_report_time(conn):
+def get_report_time(conn):
     try:
-        cur = await conn.cursor()
+        cur = conn.cursor()
         cur.row_factory = lambda cursor, row: row[0]
-        await cur.execute("SELECT last_report_time FROM times")
-        report_time_row = await cur.fetchall()
-        report_time = report_time_row[0][0]
-        await cur.close()
+        cur.execute("SELECT last_report_time FROM times")
+        report_time_row = cur.fetchall()
+        logging.debug(report_time_row)
+        report_time = report_time_row[0]
+        cur.close()
         return report_time
     except Error as e:
         logging.critical(e)
         raise e
 
 
-async def update_time_db(conn, stop_time, report_time):
+def update_time_db(conn, stop_time, report_time):
     update_sql = """
                  UPDATE times
                  SET last_end_time = ?,
                      last_report_time = ?
                  """
     try:
-        cur = await conn.cursor()
-        await cur.execute(update_sql, (stop_time, report_time))
-        await conn.commit()
-        await cur.close()
+        cur = conn.cursor()
+        cur.execute(update_sql, (stop_time, report_time))
+        conn.commit()
+        cur.close()
     except Error as e:
         logging.critical(e)
         raise e
@@ -248,21 +249,18 @@ def create_summary_db(config, records):
 
         try:
             cputime = component_dict[cpu_time_name].amount
-            logging.debug(f"cputime: {cputime}")
         except KeyError:
             logging.critical(f"no {cpu_time_name} in components")
             raise KeyError
 
         try:
             nodecount = component_dict[nnodes_name].amount
-            logging.debug(f"nodecount: {nodecount}")
         except KeyError:
             logging.critical(f"no {nnodes_name} in components")
             raise KeyError
 
         try:
             cpucount = component_dict[cores_name].amount
-            logging.debug(f"cpucount: {cpucount}")
             for s in component_dict[cores_name].scores:
                 score_dict[s.name] = s.value
         except KeyError:
@@ -271,7 +269,6 @@ def create_summary_db(config, records):
 
         try:
             benchmark_value = score_dict[benchmark_name]
-            logging.debug(f"score: {benchmark_value}")
         except KeyError:
             logging.critical(f"no {benchmark_name} in scores")
             raise KeyError
@@ -314,7 +311,7 @@ def create_summary_db(config, records):
     return conn
 
 
-async def create_sync_db(config, records):
+def create_sync_db(config, records):
     create_table_sql = """
                        CREATE TABLE IF NOT EXISTS records(
                            site TEXT NOT NULL,
@@ -339,9 +336,9 @@ async def create_sync_db(config, records):
                         """
 
     try:
-        conn = await aiosqlite.connect(":memory:")
-        cur = await conn.cursor()
-        await cur.execute(create_table_sql)
+        conn = sqlite3.connect(":memory:")
+        cur = conn.cursor()
+        cur.execute(create_table_sql)
     except Error as e:
         logging.critical(e)
         raise e
@@ -382,14 +379,14 @@ async def create_sync_db(config, records):
             r.record_id,
         )
         try:
-            await cur.execute(insert_record_sql, data_tuple)
+            cur.execute(insert_record_sql, data_tuple)
         except Error as e:
             logging.critical(e)
             raise e
 
     try:
-        await conn.commit()
-        await cur.close()
+        conn.commit()
+        cur.close()
     except Error as e:
         logging.critical(e)
         raise e
@@ -397,7 +394,7 @@ async def create_sync_db(config, records):
     return conn
 
 
-async def group_summary_db(summary_db, filter_by: (int, int, str) = None):
+def group_summary_db(summary_db, filter_by: (int, int, str) = None):
     filter = ""
     if filter_by is not None:
         filter = f"""
@@ -435,19 +432,19 @@ async def group_summary_db(summary_db, filter_by: (int, int, str) = None):
                           nodecount
                  """
 
-    summary_db.row_factory = aiosqlite.Row
-    cur = await summary_db.cursor()
-    await cur.execute(group_sql)
-    grouped_summary_list = await cur.fetchall()
-    await cur.close()
-    await summary_db.close()
+    summary_db.row_factory = sqlite3.Row
+    cur = summary_db.cursor()
+    cur.execute(group_sql)
+    grouped_summary_list = cur.fetchall()
+    cur.close()
+    summary_db.close()
 
     return grouped_summary_list
 
 
-async def group_sync_db(sync_db):
-    sync_db.row_factory = aiosqlite.Row
-    cur = await sync_db.cursor()
+def group_sync_db(sync_db):
+    sync_db.row_factory = sqlite3.Row
+    cur = sync_db.cursor()
     group_sql = """
                 SELECT site,
                        submithost,
@@ -461,15 +458,15 @@ async def group_sync_db(sync_db):
                          month
                 """
 
-    await cur.execute(group_sql)
-    grouped_sync_list = await cur.fetchall()
-    await cur.close()
-    await sync_db.close()
+    cur.execute(group_sql)
+    grouped_sync_list = cur.fetchall()
+    cur.close()
+    sync_db.close()
 
     return grouped_sync_list
 
 
-async def create_summary(grouped_summary_list):
+def create_summary(grouped_summary_list):
     summary = "APEL-summary-job-message: v0.3\n"
 
     for entry in grouped_summary_list:
@@ -495,7 +492,7 @@ async def create_summary(grouped_summary_list):
     return summary
 
 
-async def create_sync(sync_db):
+def create_sync(sync_db):
     sync = "APEL-sync-message: v0.1\n"
 
     for entry in sync_db:
@@ -509,7 +506,7 @@ async def create_sync(sync_db):
     return sync
 
 
-async def get_token(config):
+def get_token(config):
     auth_url = config["authentication"].get("auth_url")
     client_cert = config["authentication"].get("client_cert")
     client_key = config["authentication"].get("client_key")
@@ -523,7 +520,7 @@ async def get_token(config):
     return token
 
 
-async def sign_msg(client_cert, client_key, msg):
+def sign_msg(client_cert, client_key, msg):
     with open(client_cert, "rb") as cc:
         cert = x509.load_pem_x509_certificate(cc.read())
 
@@ -542,7 +539,7 @@ async def sign_msg(client_cert, client_key, msg):
     return signed_msg
 
 
-async def build_payload(msg):
+def build_payload(msg):
     current_time = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     empaid = f"{current_time[:8]}/{current_time}"
 
@@ -551,7 +548,7 @@ async def build_payload(msg):
     return payload
 
 
-async def send_payload(config, token, payload):
+def send_payload(config, token, payload):
     # ca_path = config["authentication"].get("ca_path")
     ams_url = config["authentication"].get("ams_url")
     logging.debug(f"{ams_url}{token}")
