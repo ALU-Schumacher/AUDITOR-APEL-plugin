@@ -9,6 +9,7 @@ from apel_plugin import (
     get_report_time,
     update_time_db,
     create_summary_db,
+    get_submit_host,
 )
 from datetime import datetime
 import pytz
@@ -40,6 +41,8 @@ def create_rec(rec_values, conf):
     meta = pyauditor.Meta()
     meta.insert(conf["meta_key_site"], [rec_values["site"]])
     meta.insert(conf["meta_key_user"], [rec_values["user"]])
+    if rec_values["submit_host"] is not None:
+        meta.insert(conf["meta_key_submithost"], [rec_values["submit_host"]])
     rec.with_meta(meta)
 
     return rec
@@ -322,7 +325,7 @@ class TestAPELPlugin:
             '{"test-site-1": "TEST_SITE_1", "test-site-2": "TEST_SITE_2"}'
         )
         sites_to_report = '["test-site-1", "test-site-2"]'
-        submit_host = "https://xxx.test.submit_host.de:1234/xxx"
+        default_submit_host = "https://default.submit_host.de:1234/xxx"
         infrastructure_type = "grid"
         benchmark_name = "HEPSPEC06"
         cores_name = "Cores"
@@ -330,6 +333,7 @@ class TestAPELPlugin:
         nnodes_name = "NNodes"
         meta_key_site = "site_id"
         meta_key_user = "user_id"
+        meta_key_submithost = "headnode"
         vo_mapping = (
             '{"^first": {"vo": "first_vo", "vogroup": "/first_vogroup", '
             '"vorole": "Role=NULL"}, "^second": {"vo": "second_vo", '
@@ -340,7 +344,7 @@ class TestAPELPlugin:
         conf["site"] = {
             "site_name_mapping": site_name_mapping,
             "sites_to_report": sites_to_report,
-            "submit_host": submit_host,
+            "default_submit_host": default_submit_host,
             "infrastructure_type": infrastructure_type,
         }
         conf["auditor"] = {
@@ -350,6 +354,7 @@ class TestAPELPlugin:
             "nnodes_name": nnodes_name,
             "meta_key_site": meta_key_site,
             "meta_key_user": meta_key_user,
+            "meta_key_submithost": meta_key_submithost,
         }
         conf["uservo"] = {"vo_mapping": vo_mapping}
 
@@ -365,6 +370,7 @@ class TestAPELPlugin:
             "n_nodes": 1,
             "site": "test-site-1",
             "user": "first_user",
+            "submit_host": "https:%2F%2Ftest1.submit_host.de:1234%2Fxxx",
         }
 
         rec_2_values = {
@@ -377,6 +383,7 @@ class TestAPELPlugin:
             "n_nodes": 2,
             "site": "test-site-2",
             "user": "second_user",
+            "submit_host": "https:%2F%2Ftest2.submit_host.de:1234%2Fxxx",
         }
 
         rec_value_list = [rec_1_values, rec_2_values]
@@ -406,7 +413,9 @@ class TestAPELPlugin:
                 content[idx][0]
                 == ast.literal_eval(site_name_mapping)[rec_values["site"]]
             )
-            assert content[idx][1] == submit_host
+            assert content[idx][1] == rec_values["submit_host"].replace(
+                "%2F", "/"
+            )
             assert (
                 content[idx][2]
                 == regex_dict_lookup(
@@ -451,7 +460,7 @@ class TestAPELPlugin:
 
         conf["site"] = {
             "sites_to_report": sites_to_report,
-            "submit_host": submit_host,
+            "default_submit_host": default_submit_host,
             "infrastructure_type": infrastructure_type,
         }
 
@@ -508,7 +517,7 @@ class TestAPELPlugin:
             '{"test-site-1": "TEST_SITE_1", "test-site-2": "TEST_SITE_2"}'
         )
         sites_to_report = '["test-site-1", "test-site-2"]'
-        submit_host = "https://xxx.test.submit_host.de:1234/xxx"
+        default_submit_host = "https://default.submit_host.de:1234/xxx"
         infrastructure_type = "grid"
         benchmark_name = "HEPSPEC06"
         cores_name = "Cores"
@@ -516,6 +525,7 @@ class TestAPELPlugin:
         nnodes_name = "NNodes"
         meta_key_site = "site_id"
         meta_key_user = "user_id"
+        meta_key_submithost = "headnode"
         vo_mapping = (
             '{"^first": {"vo": "first_vo", "vogroup": "/first_vogroup", '
             '"vorole": "Role=NULL"}, "^second": {"vo": "second_vo", '
@@ -526,7 +536,7 @@ class TestAPELPlugin:
         conf["site"] = {
             "site_name_mapping": site_name_mapping,
             "sites_to_report": sites_to_report,
-            "submit_host": submit_host,
+            "default_submit_host": default_submit_host,
             "infrastructure_type": infrastructure_type,
         }
         conf["auditor"] = {
@@ -536,6 +546,7 @@ class TestAPELPlugin:
             "nnodes_name": nnodes_name,
             "meta_key_site": meta_key_site,
             "meta_key_user": meta_key_user,
+            "meta_key_submithost": meta_key_submithost,
         }
         conf["uservo"] = {"vo_mapping": vo_mapping}
 
@@ -551,6 +562,7 @@ class TestAPELPlugin:
             "n_nodes": 1,
             "site": "test-site-1",
             "user": "first_user",
+            "submit_host": "https:%2F%2Ftest1.submit_host.de:1234%2Fxxx",
         }
 
         rec_2_values = {
@@ -563,6 +575,7 @@ class TestAPELPlugin:
             "n_nodes": 2,
             "site": "test-site-2",
             "user": "second_user",
+            "submit_host": "https:%2F%2Ftest2.submit_host.de:1234%2Fxxx",
         }
 
         rec_value_list = [rec_1_values, rec_2_values]
@@ -618,3 +631,89 @@ class TestAPELPlugin:
             with pytest.raises(Exception) as pytest_error:
                 create_summary_db(conf, records)
             assert pytest_error.type == KeyError
+
+    def test_get_submit_host(self):
+        default_submit_host = "https://default.submit_host.de:1234/xxx"
+        benchmark_name = "HEPSPEC06"
+        cores_name = "Cores"
+        cpu_time_name = "TotalCPU"
+        nnodes_name = "NNodes"
+        meta_key_site = "site_id"
+        meta_key_user = "user_id"
+        meta_key_submithost = "headnode"
+
+        conf = configparser.ConfigParser()
+        conf["site"] = {
+            "default_submit_host": default_submit_host,
+        }
+        conf["auditor"] = {
+            "benchmark_name": benchmark_name,
+            "cores_name": cores_name,
+            "cpu_time_name": cpu_time_name,
+            "nnodes_name": nnodes_name,
+            "meta_key_site": meta_key_site,
+            "meta_key_user": meta_key_user,
+            "meta_key_submithost": meta_key_submithost,
+        }
+
+        runtime = 55
+
+        rec_1_values = {
+            "rec_id": "test_record_1",
+            "start_time": datetime(1984, 3, 3, 0, 0, 0),
+            "stop_time": datetime(1985, 3, 3, 0, 0, 0),
+            "n_cores": 8,
+            "hepscore": 10.0,
+            "tot_cpu": 15520000,
+            "n_nodes": 1,
+            "site": "test-site-1",
+            "user": "first_user",
+            "submit_host": "https:%2F%2Ftest1.submit_host.de:1234%2Fxxx",
+        }
+
+        rec_2_values = {
+            "rec_id": "test_record_2",
+            "start_time": datetime(2023, 1, 1, 14, 24, 11),
+            "stop_time": datetime(2023, 1, 2, 7, 11, 45),
+            "n_cores": 1,
+            "hepscore": 23.0,
+            "tot_cpu": 12234325,
+            "n_nodes": 2,
+            "site": "test-site-2",
+            "user": "second_user",
+            "submit_host": "https:%2F%2Ftest2.submit_host.de:1234%2Fxxx",
+        }
+
+        rec_3_values = {
+            "rec_id": "test_record_3",
+            "start_time": datetime(2022, 1, 1, 14, 24, 11),
+            "stop_time": datetime(2023, 1, 2, 7, 11, 45),
+            "n_cores": 2,
+            "hepscore": 3.0,
+            "tot_cpu": 12265325,
+            "n_nodes": 1,
+            "site": "test-site-2",
+            "user": "second_user",
+            "submit_host": None,
+        }
+
+        rec_value_list = [rec_1_values, rec_2_values, rec_3_values]
+        records = []
+
+        with patch(
+            "pyauditor.Record.runtime", new_callable=PropertyMock
+        ) as mocked_runtime:
+            mocked_runtime.return_value = runtime
+
+            for r_values in rec_value_list:
+                rec = create_rec(r_values, conf["auditor"])
+                records.append(rec)
+
+        result = get_submit_host(records[0], conf)
+        assert result == rec_1_values["submit_host"].replace("%2F", "/")
+
+        result = get_submit_host(records[1], conf)
+        assert result == rec_2_values["submit_host"].replace("%2F", "/")
+
+        result = get_submit_host(records[2], conf)
+        assert result == default_submit_host

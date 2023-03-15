@@ -98,7 +98,6 @@ def get_start_time(conn):
         cur.row_factory = lambda cursor, row: row[0]
         cur.execute("SELECT last_end_time FROM times")
         start_time_row = cur.fetchall()
-        logging.debug(start_time_row)
         start_time = datetime.fromtimestamp(start_time_row[0], tz=pytz.utc)
         cur.close()
         return start_time
@@ -113,7 +112,6 @@ def get_report_time(conn):
         cur.row_factory = lambda cursor, row: row[0]
         cur.execute("SELECT last_report_time FROM times")
         report_time_row = cur.fetchall()
-        logging.debug(report_time_row)
         report_time = report_time_row[0]
         cur.close()
         return report_time
@@ -136,6 +134,23 @@ def update_time_db(conn, stop_time, report_time):
     except Error as e:
         logging.critical(e)
         raise e
+
+
+def get_submit_host(record, config):
+    meta_key_submithost = config["auditor"].get("meta_key_submithost")
+    default_submit_host = config["site"].get("default_submit_host")
+
+    try:
+        submit_host = record.meta.get(meta_key_submithost)[0].replace(
+            "%2F", "/"
+        )
+    except TypeError:
+        logging.warning(
+            f"No submithost found in record {record.record_id}, using default"
+        )
+        submit_host = default_submit_host
+
+    return submit_host
 
 
 def create_summary_db(config, records):
@@ -205,7 +220,6 @@ def create_summary_db(config, records):
 
     sites_to_report = json.loads(config["site"].get("sites_to_report"))
     vo_mapping = json.loads(config["uservo"].get("vo_mapping"))
-    submit_host = config["site"].get("submit_host")
     infrastructure = config["site"].get("infrastructure_type")
     benchmark_name = config["auditor"].get("benchmark_name")
     cores_name = config["auditor"].get("cores_name")
@@ -229,6 +243,8 @@ def create_summary_db(config, records):
                 raise KeyError
         else:
             site_name = site_id
+
+        submit_host = get_submit_host(r, config)
 
         user_id = r.meta.get(meta_key_user)[0]
         vo_info = regex_dict_lookup(user_id, vo_mapping)
@@ -349,7 +365,6 @@ def create_sync_db(config, records):
         site_name_mapping = None
 
     sites_to_report = json.loads(config["site"].get("sites_to_report"))
-    submit_host = config["site"].get("submit_host")
     meta_key_site = config["auditor"].get("meta_key_site")
 
     for r in records:
@@ -367,6 +382,8 @@ def create_sync_db(config, records):
                 sys.exit(1)
         else:
             site_name = site_id
+
+        submit_host = get_submit_host(r, config)
 
         year = r.stop_time.replace(tzinfo=pytz.utc).year
         month = r.stop_time.replace(tzinfo=pytz.utc).month
