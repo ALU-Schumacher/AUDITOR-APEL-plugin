@@ -11,7 +11,6 @@ from datetime import datetime, timedelta, time
 import pytz
 import json
 import sys
-import re
 import requests
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -26,15 +25,6 @@ def get_begin_previous_month(current_time):
     begin_previous_month_utc = begin_previous_month.replace(tzinfo=pytz.utc)
 
     return begin_previous_month_utc
-
-
-def regex_dict_lookup(term, dict):
-    result = None
-    for key in dict:
-        if re.search(key, term):
-            result = dict[key]
-
-    return result
 
 
 def get_time_db(publish_since, time_db_path):
@@ -146,11 +136,47 @@ def get_submit_host(record, config):
         )
     except TypeError:
         logging.warning(
-            f"No submithost found in record {record.record_id}, using default"
+            f"No submithost found in record {record.record_id}, send default"
         )
         submit_host = default_submit_host
 
     return submit_host
+
+
+def get_voms_info(record, config):
+    meta_key_voms = config["auditor"].get("meta_key_voms")
+    voms_dict = {}
+
+    try:
+        voms_string = record.meta.get(meta_key_voms)[0].replace("%2F", "/")
+        voms_list = voms_string.split("/")
+        voms_dict["vo"] = voms_list[1]
+
+        if "Role" not in voms_string:
+            logging.warning(
+                f"No Role found in VOMS of {record.record_id}: {voms_string}"
+            )
+            logging.warning("Not sending VORole")
+            voms_dict["vorole"] = None
+
+            if len(voms_list) == 2:
+                voms_dict["vogroup"] = "/" + voms_list[1]
+            else:
+                voms_dict["vogroup"] = "/" + voms_list[1] + "/" + voms_list[2]
+        elif len(voms_list) == 3:
+            voms_dict["vogroup"] = "/" + voms_list[1]
+            voms_dict["vorole"] = voms_list[2]
+        else:
+            voms_dict["vogroup"] = "/" + voms_list[1] + "/" + voms_list[2]
+            voms_dict["vorole"] = voms_list[3]
+    except TypeError:
+        logging.warning(f"No VOMS information found in {record.record_id}")
+        logging.warning("Not sending VO, VOGroup, and VORole")
+        voms_dict["vo"] = None
+        voms_dict["vogroup"] = None
+        voms_dict["vorole"] = None
+
+    return voms_dict
 
 
 def create_summary_db(config, records):
@@ -158,9 +184,9 @@ def create_summary_db(config, records):
                        CREATE TABLE IF NOT EXISTS records(
                            site TEXT NOT NULL,
                            submithost TEXT NOT NULL,
-                           vo TEXT NOT NULL,
-                           vogroup TEXT NOT NULL,
-                           vorole TEXT NOT NULL,
+                           vo TEXT,
+                           vogroup TEXT,
+                           vorole TEXT,
                            infrastructure TEXT NOT NULL,
                            year INTEGER NOT NULL,
                            month INTEGER NOT NULL,
@@ -172,7 +198,8 @@ def create_summary_db(config, records):
                            cputime INTEGER NOT NULL,
                            normcputime INTEGER NOT NULL,
                            starttime INTEGER NOT NULL,
-                           stoptime INTEGER NOT NULL
+                           stoptime INTEGER NOT NULL,
+                           user TEXT
                        )
                        """
 
@@ -194,14 +221,15 @@ def create_summary_db(config, records):
                             cputime,
                             normcputime,
                             starttime,
-                            stoptime
+                            stoptime,
+                            user
                         )
                         VALUES(
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
-                            ?
+                            ?, ?
                         )
                         """
 
@@ -219,14 +247,13 @@ def create_summary_db(config, records):
         site_name_mapping = None
 
     sites_to_report = json.loads(config["site"].get("sites_to_report"))
-    vo_mapping = json.loads(config["uservo"].get("vo_mapping"))
     infrastructure = config["site"].get("infrastructure_type")
     benchmark_name = config["auditor"].get("benchmark_name")
     cores_name = config["auditor"].get("cores_name")
     cpu_time_name = config["auditor"].get("cpu_time_name")
     nnodes_name = config["auditor"].get("nnodes_name")
     meta_key_site = config["auditor"].get("meta_key_site")
-    meta_key_user = config["auditor"].get("meta_key_user")
+    meta_key_username = config["auditor"].get("meta_key_username")
 
     for r in records:
         site_id = r.meta.get(meta_key_site)[0]
@@ -246,13 +273,14 @@ def create_summary_db(config, records):
 
         submit_host = get_submit_host(r, config)
 
-        user_id = r.meta.get(meta_key_user)[0]
-        vo_info = regex_dict_lookup(user_id, vo_mapping)
-        if vo_info is None:
-            logging.critical(
-                f"User {user_id} not matched in {vo_mapping.keys()}"
-            )
-            raise KeyError
+        voms_dict = get_voms_info(r, config)
+
+        try:
+            user_name = r.meta.get(meta_key_username)[0].replace("%2F", "/")
+        except TypeError:
+            logging.warning(f"No GlobalUserName found in {r.record_id}")
+            logging.warning("Not sending GlobalUserName")
+            user_name = None
 
         year = r.stop_time.replace(tzinfo=pytz.utc).year
         month = r.stop_time.replace(tzinfo=pytz.utc).month
@@ -295,9 +323,9 @@ def create_summary_db(config, records):
         data_tuple = (
             site_name,
             submit_host,
-            vo_info["vo"],
-            vo_info["vogroup"],
-            vo_info["vorole"],
+            voms_dict["vo"],
+            voms_dict["vogroup"],
+            voms_dict["vorole"],
             infrastructure,
             year,
             month,
@@ -310,6 +338,7 @@ def create_summary_db(config, records):
             norm_cputime,
             r.start_time.replace(tzinfo=pytz.utc).timestamp(),
             r.stop_time.replace(tzinfo=pytz.utc).timestamp(),
+            user_name,
         )
         try:
             cur.execute(insert_record_sql, data_tuple)
@@ -437,16 +466,20 @@ def group_summary_db(summary_db, filter_by: (int, int, str) = None):
                         SUM(cputime) as cputime,
                         SUM(normcputime) as norm_cputime,
                         MIN(stoptime) as min_stoptime,
-                        MAX(stoptime) as max_stoptime
+                        MAX(stoptime) as max_stoptime,
+                        user
                  FROM records
                  {filter}
                  GROUP BY site,
                           submithost,
                           vo,
+                          vogroup,
+                          vorole,
                           year,
                           month,
                           cpucount,
-                          nodecount
+                          nodecount,
+                          user
                  """
 
     summary_db.row_factory = sqlite3.Row
@@ -490,9 +523,14 @@ def create_summary(grouped_summary_list):
         summary += f"Site: {entry['site']}\n"
         summary += f"Month: {entry['month']}\n"
         summary += f"Year: {entry['year']}\n"
-        summary += f"VO: {entry['vo']}\n"
-        summary += f"VOGroup: {entry['vogroup']}\n"
-        summary += f"VORole: {entry['vorole']}\n"
+        if entry["user"] is not None:
+            summary += f"GlobalUserName: {entry['user']}\n"
+        if entry["vo"] is not None:
+            summary += f"VO: {entry['vo']}\n"
+        if entry["vogroup"] is not None:
+            summary += f"VOGroup: {entry['vogroup']}\n"
+        if entry["vorole"] is not None:
+            summary += f"VORole: {entry['vorole']}\n"
         summary += f"SubmitHost: {entry['submithost']}\n"
         summary += f"Infrastructure: {entry['infrastructure']}\n"
         summary += f"Processors: {entry['cpucount']}\n"

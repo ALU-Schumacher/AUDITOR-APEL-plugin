@@ -1,6 +1,5 @@
 import pytest
 from apel_plugin import (
-    regex_dict_lookup,
     get_begin_previous_month,
     create_time_db,
     get_time_db,
@@ -10,6 +9,7 @@ from apel_plugin import (
     update_time_db,
     create_summary_db,
     get_submit_host,
+    get_voms_info,
 )
 from datetime import datetime
 import pytz
@@ -40,31 +40,18 @@ def create_rec(rec_values, conf):
     )
     meta = pyauditor.Meta()
     meta.insert(conf["meta_key_site"], [rec_values["site"]])
-    meta.insert(conf["meta_key_user"], [rec_values["user"]])
     if rec_values["submit_host"] is not None:
         meta.insert(conf["meta_key_submithost"], [rec_values["submit_host"]])
+    if rec_values["user_name"] is not None:
+        meta.insert(conf["meta_key_username"], [rec_values["user_name"]])
+    if rec_values["voms"] is not None:
+        meta.insert(conf["meta_key_voms"], [rec_values["voms"]])
     rec.with_meta(meta)
 
     return rec
 
 
 class TestAPELPlugin:
-    def test_regex_dict_lookup(self):
-        term_a = "apple"
-        term_b = "banana"
-        term_c = "citrus"
-
-        dict = {"^a": "apple_in_dict", "^b": "banana_in_dict"}
-
-        result = regex_dict_lookup(term_a, dict)
-        assert result == "apple_in_dict"
-
-        result = regex_dict_lookup(term_b, dict)
-        assert result == "banana_in_dict"
-
-        result = regex_dict_lookup(term_c, dict)
-        assert result is None
-
     def test_get_begin_previous_month(self):
         time_a = datetime(2022, 10, 23, 12, 23, 55)
         time_b = datetime(1970, 1, 1, 00, 00, 00)
@@ -332,13 +319,9 @@ class TestAPELPlugin:
         cpu_time_name = "TotalCPU"
         nnodes_name = "NNodes"
         meta_key_site = "site_id"
-        meta_key_user = "user_id"
         meta_key_submithost = "headnode"
-        vo_mapping = (
-            '{"^first": {"vo": "first_vo", "vogroup": "/first_vogroup", '
-            '"vorole": "Role=NULL"}, "^second": {"vo": "second_vo", '
-            '"vogroup": "/second_vogroup", "vorole": "Role=production"}}'
-        )
+        meta_key_voms = "voms"
+        meta_key_username = "subject"
 
         conf = configparser.ConfigParser()
         conf["site"] = {
@@ -353,10 +336,10 @@ class TestAPELPlugin:
             "cpu_time_name": cpu_time_name,
             "nnodes_name": nnodes_name,
             "meta_key_site": meta_key_site,
-            "meta_key_user": meta_key_user,
             "meta_key_submithost": meta_key_submithost,
+            "meta_key_voms": meta_key_voms,
+            "meta_key_username": meta_key_username,
         }
-        conf["uservo"] = {"vo_mapping": vo_mapping}
 
         runtime = 55
 
@@ -369,8 +352,9 @@ class TestAPELPlugin:
             "tot_cpu": 15520000,
             "n_nodes": 1,
             "site": "test-site-1",
-            "user": "first_user",
             "submit_host": "https:%2F%2Ftest1.submit_host.de:1234%2Fxxx",
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test1: test1",
+            "voms": "%2Fatlas%2Fde",
         }
 
         rec_2_values = {
@@ -382,8 +366,9 @@ class TestAPELPlugin:
             "tot_cpu": 12234325,
             "n_nodes": 2,
             "site": "test-site-2",
-            "user": "second_user",
             "submit_host": "https:%2F%2Ftest2.submit_host.de:1234%2Fxxx",
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test2: test2",
+            "voms": "%2Fatlas%2Fde",
         }
 
         rec_value_list = [rec_1_values, rec_2_values]
@@ -418,22 +403,10 @@ class TestAPELPlugin:
             )
             assert (
                 content[idx][2]
-                == regex_dict_lookup(
-                    rec_values["user"], ast.literal_eval(vo_mapping)
-                )["vo"]
+                == rec_values["voms"].replace("%2F", "/").split("/")[1]
             )
-            assert (
-                content[idx][3]
-                == regex_dict_lookup(
-                    rec_values["user"], ast.literal_eval(vo_mapping)
-                )["vogroup"]
-            )
-            assert (
-                content[idx][4]
-                == regex_dict_lookup(
-                    rec_values["user"], ast.literal_eval(vo_mapping)
-                )["vorole"]
-            )
+            assert content[idx][3] == rec_values["voms"].replace("%2F", "/")
+            assert content[idx][4] is None
             assert content[idx][5] == infrastructure_type
             assert content[idx][6] == rec_values["stop_time"].year
             assert content[idx][7] == rec_values["stop_time"].month
@@ -456,6 +429,9 @@ class TestAPELPlugin:
             assert (
                 content[idx][16]
                 == rec_values["stop_time"].replace(tzinfo=pytz.utc).timestamp()
+            )
+            assert content[idx][17] == rec_values["user_name"].replace(
+                "%2F", "/"
             )
 
         conf["site"] = {
@@ -484,6 +460,30 @@ class TestAPELPlugin:
 
         for idx, rec_values in enumerate(rec_value_list):
             assert content[idx][0] == rec_values["site"]
+
+        cur.close()
+        result.close()
+
+        rec_1_values["user_name"] = None
+        records = []
+
+        with patch(
+            "pyauditor.Record.runtime", new_callable=PropertyMock
+        ) as mocked_runtime:
+            mocked_runtime.return_value = runtime
+
+            for r_values in rec_value_list:
+                rec = create_rec(r_values, conf["auditor"])
+                records.append(rec)
+
+            result = create_summary_db(conf, records)
+
+        cur = result.cursor()
+
+        cur.execute("SELECT * FROM records")
+        content = cur.fetchall()
+
+        assert content[0][17] is None
 
         cur.close()
         result.close()
@@ -524,13 +524,9 @@ class TestAPELPlugin:
         cpu_time_name = "TotalCPU"
         nnodes_name = "NNodes"
         meta_key_site = "site_id"
-        meta_key_user = "user_id"
         meta_key_submithost = "headnode"
-        vo_mapping = (
-            '{"^first": {"vo": "first_vo", "vogroup": "/first_vogroup", '
-            '"vorole": "Role=NULL"}, "^second": {"vo": "second_vo", '
-            '"vogroup": "/second_vogroup", "vorole": "Role=production"}}'
-        )
+        meta_key_voms = "voms"
+        meta_key_username = "subject"
 
         conf = configparser.ConfigParser()
         conf["site"] = {
@@ -545,10 +541,10 @@ class TestAPELPlugin:
             "cpu_time_name": cpu_time_name,
             "nnodes_name": nnodes_name,
             "meta_key_site": meta_key_site,
-            "meta_key_user": meta_key_user,
             "meta_key_submithost": meta_key_submithost,
+            "meta_key_voms": meta_key_voms,
+            "meta_key_username": meta_key_username,
         }
-        conf["uservo"] = {"vo_mapping": vo_mapping}
 
         runtime = 55
 
@@ -561,8 +557,9 @@ class TestAPELPlugin:
             "tot_cpu": 15520000,
             "n_nodes": 1,
             "site": "test-site-1",
-            "user": "first_user",
             "submit_host": "https:%2F%2Ftest1.submit_host.de:1234%2Fxxx",
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test1: test1",
+            "voms": "%2Fatlas%2FRole=production",
         }
 
         rec_2_values = {
@@ -574,8 +571,9 @@ class TestAPELPlugin:
             "tot_cpu": 12234325,
             "n_nodes": 2,
             "site": "test-site-2",
-            "user": "second_user",
             "submit_host": "https:%2F%2Ftest2.submit_host.de:1234%2Fxxx",
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test2: test2",
+            "voms": "%2Fatlas",
         }
 
         rec_value_list = [rec_1_values, rec_2_values]
@@ -621,17 +619,6 @@ class TestAPELPlugin:
                 create_summary_db(conf, records)
             assert pytest_error.type == KeyError
 
-            conf["site"][
-                "site_name_mapping"
-            ] = '{"test-site-1": "TEST_SITE_1", "test-site-2": "TEST_SITE_2"}'
-            conf["uservo"]["vo_mapping"] = (
-                '{"^second": {"vo": "second_vo", "vogroup": "/second_vogroup",'
-                ' "vorole": "Role=production"}}'
-            )
-            with pytest.raises(Exception) as pytest_error:
-                create_summary_db(conf, records)
-            assert pytest_error.type == KeyError
-
     def test_get_submit_host(self):
         default_submit_host = "https://default.submit_host.de:1234/xxx"
         benchmark_name = "HEPSPEC06"
@@ -639,8 +626,9 @@ class TestAPELPlugin:
         cpu_time_name = "TotalCPU"
         nnodes_name = "NNodes"
         meta_key_site = "site_id"
-        meta_key_user = "user_id"
         meta_key_submithost = "headnode"
+        meta_key_voms = "voms"
+        meta_key_username = "subject"
 
         conf = configparser.ConfigParser()
         conf["site"] = {
@@ -652,8 +640,9 @@ class TestAPELPlugin:
             "cpu_time_name": cpu_time_name,
             "nnodes_name": nnodes_name,
             "meta_key_site": meta_key_site,
-            "meta_key_user": meta_key_user,
             "meta_key_submithost": meta_key_submithost,
+            "meta_key_voms": meta_key_voms,
+            "meta_key_username": meta_key_username,
         }
 
         runtime = 55
@@ -667,8 +656,9 @@ class TestAPELPlugin:
             "tot_cpu": 15520000,
             "n_nodes": 1,
             "site": "test-site-1",
-            "user": "first_user",
             "submit_host": "https:%2F%2Ftest1.submit_host.de:1234%2Fxxx",
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test1: test1",
+            "voms": "%2Fatlas%2FRole=production",
         }
 
         rec_2_values = {
@@ -680,8 +670,9 @@ class TestAPELPlugin:
             "tot_cpu": 12234325,
             "n_nodes": 2,
             "site": "test-site-2",
-            "user": "second_user",
             "submit_host": "https:%2F%2Ftest2.submit_host.de:1234%2Fxxx",
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test2: test2",
+            "voms": "%2Fatlas",
         }
 
         rec_3_values = {
@@ -695,6 +686,8 @@ class TestAPELPlugin:
             "site": "test-site-2",
             "user": "second_user",
             "submit_host": None,
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test2: test2",
+            "voms": "%2Fatlas",
         }
 
         rec_value_list = [rec_1_values, rec_2_values, rec_3_values]
@@ -717,3 +710,147 @@ class TestAPELPlugin:
 
         result = get_submit_host(records[2], conf)
         assert result == default_submit_host
+
+    def test_get_voms_info(self):
+        default_submit_host = "https://default.submit_host.de:1234/xxx"
+        benchmark_name = "HEPSPEC06"
+        cores_name = "Cores"
+        cpu_time_name = "TotalCPU"
+        nnodes_name = "NNodes"
+        meta_key_site = "site_id"
+        meta_key_submithost = "headnode"
+        meta_key_voms = "voms"
+        meta_key_username = "subject"
+
+        conf = configparser.ConfigParser()
+        conf["site"] = {
+            "default_submit_host": default_submit_host,
+        }
+        conf["auditor"] = {
+            "benchmark_name": benchmark_name,
+            "cores_name": cores_name,
+            "cpu_time_name": cpu_time_name,
+            "nnodes_name": nnodes_name,
+            "meta_key_site": meta_key_site,
+            "meta_key_submithost": meta_key_submithost,
+            "meta_key_voms": meta_key_voms,
+            "meta_key_username": meta_key_username,
+        }
+
+        runtime = 55
+
+        rec_1_values = {
+            "rec_id": "test_record_1",
+            "start_time": datetime(1984, 3, 3, 0, 0, 0),
+            "stop_time": datetime(1985, 3, 3, 0, 0, 0),
+            "n_cores": 8,
+            "hepscore": 10.0,
+            "tot_cpu": 15520000,
+            "n_nodes": 1,
+            "site": "test-site-1",
+            "submit_host": "https:%2F%2Ftest1.submit_host.de:1234%2Fxxx",
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test1: test1",
+            "voms": "%2Fatlas%2FRole=production",
+        }
+
+        rec_2_values = {
+            "rec_id": "test_record_2",
+            "start_time": datetime(2023, 1, 1, 14, 24, 11),
+            "stop_time": datetime(2023, 1, 2, 7, 11, 45),
+            "n_cores": 1,
+            "hepscore": 23.0,
+            "tot_cpu": 12234325,
+            "n_nodes": 2,
+            "site": "test-site-2",
+            "submit_host": "https:%2F%2Ftest2.submit_host.de:1234%2Fxxx",
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test2: test2",
+            "voms": "%2Fatlas",
+        }
+
+        rec_3_values = {
+            "rec_id": "test_record_3",
+            "start_time": datetime(2022, 1, 1, 14, 24, 11),
+            "stop_time": datetime(2023, 1, 2, 7, 11, 45),
+            "n_cores": 2,
+            "hepscore": 3.0,
+            "tot_cpu": 12265325,
+            "n_nodes": 1,
+            "site": "test-site-2",
+            "user": "second_user",
+            "submit_host": None,
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test2: test2",
+            "voms": "%2Fatlas%2Fde%2FRole=production",
+        }
+
+        rec_4_values = {
+            "rec_id": "test_record_4",
+            "start_time": datetime(2022, 1, 1, 14, 24, 11),
+            "stop_time": datetime(2023, 1, 2, 7, 11, 45),
+            "n_cores": 2,
+            "hepscore": 3.0,
+            "tot_cpu": 12265325,
+            "n_nodes": 1,
+            "site": "test-site-2",
+            "user": "second_user",
+            "submit_host": None,
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test2: test2",
+            "voms": "%2Fatlas%2Fde",
+        }
+
+        rec_5_values = {
+            "rec_id": "test_record_4",
+            "start_time": datetime(2022, 1, 1, 14, 24, 11),
+            "stop_time": datetime(2023, 1, 2, 7, 11, 45),
+            "n_cores": 2,
+            "hepscore": 3.0,
+            "tot_cpu": 12265325,
+            "n_nodes": 1,
+            "site": "test-site-2",
+            "user": "second_user",
+            "submit_host": None,
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test2: test2",
+            "voms": None,
+        }
+
+        rec_value_list = [
+            rec_1_values,
+            rec_2_values,
+            rec_3_values,
+            rec_4_values,
+            rec_5_values,
+        ]
+        records = []
+
+        with patch(
+            "pyauditor.Record.runtime", new_callable=PropertyMock
+        ) as mocked_runtime:
+            mocked_runtime.return_value = runtime
+
+            for r_values in rec_value_list:
+                rec = create_rec(r_values, conf["auditor"])
+                records.append(rec)
+
+        result = get_voms_info(records[0], conf)
+        assert result["vo"] == "atlas"
+        assert result["vogroup"] == "/atlas"
+        assert result["vorole"] == "Role=production"
+
+        result = get_voms_info(records[1], conf)
+        assert result["vo"] == "atlas"
+        assert result["vogroup"] == "/atlas"
+        assert result["vorole"] is None
+
+        result = get_voms_info(records[2], conf)
+        assert result["vo"] == "atlas"
+        assert result["vogroup"] == "/atlas/de"
+        assert result["vorole"] == "Role=production"
+
+        result = get_voms_info(records[3], conf)
+        assert result["vo"] == "atlas"
+        assert result["vogroup"] == "/atlas/de"
+        assert result["vorole"] is None
+
+        result = get_voms_info(records[4], conf)
+        assert result["vo"] is None
+        assert result["vogroup"] is None
+        assert result["vorole"] is None
