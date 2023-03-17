@@ -475,6 +475,7 @@ def group_summary_db(summary_db, filter_by: (int, int, str) = None):
                           vo,
                           vogroup,
                           vorole,
+                          infrastructure,
                           year,
                           month,
                           cpucount,
