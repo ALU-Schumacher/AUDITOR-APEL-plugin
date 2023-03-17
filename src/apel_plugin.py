@@ -136,7 +136,8 @@ def get_submit_host(record, config):
         )
     except TypeError:
         logging.warning(
-            f"No submithost found in record {record.record_id}, send default"
+            f"No {meta_key_submithost} found in record {record.record_id}, "
+            f"sending default SubmitHost {default_submit_host}"
         )
         submit_host = default_submit_host
 
@@ -154,9 +155,9 @@ def get_voms_info(record, config):
 
         if "Role" not in voms_string:
             logging.warning(
-                f"No Role found in VOMS of {record.record_id}: {voms_string}"
+                f"No Role found in VOMS of {record.record_id}: {voms_string}, "
+                "not sending VORole"
             )
-            logging.warning("Not sending VORole")
             voms_dict["vorole"] = None
 
             if len(voms_list) == 2:
@@ -170,8 +171,10 @@ def get_voms_info(record, config):
             voms_dict["vogroup"] = "/" + voms_list[1] + "/" + voms_list[2]
             voms_dict["vorole"] = voms_list[3]
     except TypeError:
-        logging.warning(f"No VOMS information found in {record.record_id}")
-        logging.warning("Not sending VO, VOGroup, and VORole")
+        logging.warning(
+            f"No VOMS information found in {record.record_id}, "
+            "not sending VO, VOGroup, and VORole"
+        )
         voms_dict["vo"] = None
         voms_dict["vogroup"] = None
         voms_dict["vorole"] = None
@@ -278,8 +281,10 @@ def create_summary_db(config, records):
         try:
             user_name = r.meta.get(meta_key_username)[0].replace("%2F", "/")
         except TypeError:
-            logging.warning(f"No GlobalUserName found in {r.record_id}")
-            logging.warning("Not sending GlobalUserName")
+            logging.warning(
+                f"No GlobalUserName found in {r.record_id}, "
+                "not sending GlobalUserName"
+            )
             user_name = None
 
         year = r.stop_time.replace(tzinfo=pytz.utc).year
