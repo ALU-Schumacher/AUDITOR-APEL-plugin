@@ -10,6 +10,7 @@ from apel_plugin import (
     create_summary_db,
     get_submit_host,
     get_voms_info,
+    replace_record_string,
 )
 from datetime import datetime
 import pytz
@@ -398,14 +399,14 @@ class TestAPELPlugin:
                 content[idx][0]
                 == ast.literal_eval(site_name_mapping)[rec_values["site"]]
             )
-            assert content[idx][1] == rec_values["submit_host"].replace(
-                "%2F", "/"
+            assert content[idx][1] == replace_record_string(
+                rec_values["submit_host"]
             )
             assert (
                 content[idx][2]
-                == rec_values["voms"].replace("%2F", "/").split("/")[1]
+                == replace_record_string(rec_values["voms"]).split("/")[1]
             )
-            assert content[idx][3] == rec_values["voms"].replace("%2F", "/")
+            assert content[idx][3] == replace_record_string(rec_values["voms"])
             assert content[idx][4] is None
             assert content[idx][5] == infrastructure_type
             assert content[idx][6] == rec_values["stop_time"].year
@@ -430,8 +431,8 @@ class TestAPELPlugin:
                 content[idx][16]
                 == rec_values["stop_time"].replace(tzinfo=pytz.utc).timestamp()
             )
-            assert content[idx][17] == rec_values["user_name"].replace(
-                "%2F", "/"
+            assert content[idx][17] == replace_record_string(
+                rec_values["user_name"]
             )
 
         conf["site"] = {
@@ -703,10 +704,10 @@ class TestAPELPlugin:
                 records.append(rec)
 
         result = get_submit_host(records[0], conf)
-        assert result == rec_1_values["submit_host"].replace("%2F", "/")
+        assert result == replace_record_string(rec_1_values["submit_host"])
 
         result = get_submit_host(records[1], conf)
-        assert result == rec_2_values["submit_host"].replace("%2F", "/")
+        assert result == replace_record_string(rec_2_values["submit_host"])
 
         result = get_submit_host(records[2], conf)
         assert result == default_submit_host
@@ -854,3 +855,13 @@ class TestAPELPlugin:
         assert result["vo"] is None
         assert result["vogroup"] is None
         assert result["vorole"] is None
+
+    def test_replace_record_string(self):
+        test_str_1 = "abcd"
+        test_str_2 = "%2Fa%2Fb%2Fc%2Fd%2F"
+
+        result = replace_record_string(test_str_1)
+        assert result == "abcd"
+
+        result = replace_record_string(test_str_2)
+        assert result == "/a/b/c/d/"
