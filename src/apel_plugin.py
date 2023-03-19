@@ -126,13 +126,19 @@ def update_time_db(conn, stop_time, report_time):
         raise e
 
 
+def replace_record_string(string):
+    updated_string = string.replace("%2F", "/")
+
+    return updated_string
+
+
 def get_submit_host(record, config):
     meta_key_submithost = config["auditor"].get("meta_key_submithost")
     default_submit_host = config["site"].get("default_submit_host")
 
     try:
-        submit_host = record.meta.get(meta_key_submithost)[0].replace(
-            "%2F", "/"
+        submit_host = replace_record_string(
+            record.meta.get(meta_key_submithost)[0]
         )
     except TypeError:
         logging.warning(
@@ -149,7 +155,7 @@ def get_voms_info(record, config):
     voms_dict = {}
 
     try:
-        voms_string = record.meta.get(meta_key_voms)[0].replace("%2F", "/")
+        voms_string = replace_record_string(record.meta.get(meta_key_voms)[0])
         voms_list = voms_string.split("/")
         voms_dict["vo"] = voms_list[1]
 
@@ -279,7 +285,7 @@ def create_summary_db(config, records):
         voms_dict = get_voms_info(r, config)
 
         try:
-            user_name = r.meta.get(meta_key_username)[0].replace("%2F", "/")
+            user_name = replace_record_string(r.meta.get(meta_key_username)[0])
         except TypeError:
             logging.warning(
                 f"No GlobalUserName found in {r.record_id}, "
