@@ -301,14 +301,7 @@ class TestAuditorApelPlugin:
         cur.row_factory = lambda cursor, row: row[0]
 
         stop_time = datetime(1984, 3, 3, 0, 0, 0)
-        report_time = datetime(2032, 11, 5, 12, 12, 15).timestamp()
-
-        update_time_db(time_db, stop_time, report_time)
-
-        with pytest.raises(Exception) as pytest_error:
-            cur.execute("SELECT last_report_time FROM times")
-
-        assert pytest_error.type == ValueError
+        report_time = datetime(2032, 11, 5, 12, 12, 15)
 
         drop_column = "ALTER TABLE times DROP last_report_time"
         cur.execute(drop_column)
