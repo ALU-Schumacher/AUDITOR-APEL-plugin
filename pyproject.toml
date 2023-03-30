@@ -23,6 +23,10 @@ tests = [
       "pytest-cov",
 ]
 
+[project.scripts]
+apel-publish = "scripts.publish:main"
+apel-republish = "scripts.republish:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

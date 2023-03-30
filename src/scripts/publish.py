@@ -31,15 +31,16 @@ from apel_plugin import (
 
 
 async def run(config, client):
+    logging.critical("START6")
     report_interval = config["intervals"].getint("report_interval")
     time_db_path = config["paths"].get("time_db_path")
     publish_since = config["site"].get("publish_since")
     client_cert = config["authentication"].get("client_cert")
     client_key = config["authentication"].get("client_key")
-
+    logging.critical("START7")
     token = get_token(config)
     logging.debug(token)
-
+    logging.critical("START8")
     while True:
         time_db_conn = get_time_db(publish_since, time_db_path)
         last_report_time = get_report_time(time_db_conn)
@@ -103,7 +104,7 @@ async def run(config, client):
 
 def main():
     config = configparser.ConfigParser()
-    config.read("apel_plugin.cfg")
+    config.read("/tmp/apel_plugin.cfg")
 
     log_level = config["logging"].get("log_level")
     log_format = (
@@ -117,18 +118,20 @@ def main():
         format=log_format,
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    logging.critical("START")
     logging.getLogger("asyncio").setLevel("WARNING")
     logging.getLogger("aiosqlite").setLevel("WARNING")
     logging.getLogger("urllib3").setLevel("WARNING")
-
+    logging.critical("START2")
     auditor_ip = config["auditor"].get("auditor_ip")
     auditor_port = config["auditor"].getint("auditor_port")
-
+    logging.critical("START3")
     builder = AuditorClientBuilder()
     builder = builder.address(auditor_ip, auditor_port)
     client = builder.build()
-
+    logging.critical("START4")
     try:
+        logging.critical("START5")
         asyncio.run(run(config, client))
     except KeyboardInterrupt:
         logging.critical("User abort")

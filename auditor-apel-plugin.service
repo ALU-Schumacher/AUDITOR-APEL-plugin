@@ -1,0 +1,11 @@
+[Unit]
+Description=Service publishes accounting data from AUDITOR to APEL
+After=default.target
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=/bin/sh -c 'source /usr/bin/auditor-apel-venv && apel-publish'
+
+[Install]
+WantedBy=default.target

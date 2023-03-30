@@ -54,7 +54,7 @@ async def run(config, args, client):
 
 def main():
     config = configparser.ConfigParser()
-    config.read("apel_plugin.cfg")
+    config.read("/etc/auditor-apel-plugin/apel_plugin.cfg")
 
     log_level = config["logging"].get("log_level")
     log_format = "[%(asctime)s] %(levelname)-8s %(message)s"
