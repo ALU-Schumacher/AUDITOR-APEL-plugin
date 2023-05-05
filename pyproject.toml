@@ -9,7 +9,7 @@ requires-python = ">=3.7"
 dependencies = [
 	     "python-auditor==0.0.7",
 	     "pytz==2023.3",
-	     "requests==2.28.2",
+	     "requests==2.30.0",
 	     "cryptography==40.0.1",
 ]
 
