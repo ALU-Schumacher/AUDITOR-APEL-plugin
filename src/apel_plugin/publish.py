@@ -11,7 +11,7 @@ import pytz
 import configparser
 import base64
 from time import sleep
-from apel_plugin import (
+from apel_plugin.core import (
     get_token,
     get_time_db,
     get_report_time,

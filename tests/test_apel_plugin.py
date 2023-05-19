@@ -1,5 +1,5 @@
 import pytest
-from apel_plugin import (
+from apel_plugin.core import (
     get_begin_previous_month,
     create_time_db,
     get_time_db,
