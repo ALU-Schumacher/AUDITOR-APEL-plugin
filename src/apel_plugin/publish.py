@@ -9,6 +9,7 @@ from pyauditor import AuditorClientBuilder
 from datetime import datetime
 import pytz
 import configparser
+import argparse
 import base64
 from time import sleep
 from apel_plugin.core import (
@@ -103,8 +104,14 @@ async def run(config, client):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-c", "--config", required=True, help="Path to the config file"
+    )
+    args = parser.parse_args()
+
     config = configparser.ConfigParser()
-    config.read("/tmp/apel_plugin.cfg")
+    config.read(args.config)
 
     log_level = config["logging"].get("log_level")
     log_format = (

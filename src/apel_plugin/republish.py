@@ -53,8 +53,23 @@ async def run(config, args, client):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-y", "--year", type=int, required=True, help="Year: 2020, 2021, ..."
+    )
+    parser.add_argument(
+        "-m", "--month", type=int, required=True, help="Month: 4, 8, 12, ..."
+    )
+    parser.add_argument(
+        "-s", "--site", required=True, help="Site (GOCDB): UNI-FREIBURG, ..."
+    )
+    parser.add_argument(
+        "-c", "--config", required=True, help="Path to the config file"
+    )
+    args = parser.parse_args()
+
     config = configparser.ConfigParser()
-    config.read("/etc/auditor-apel-plugin/apel_plugin.cfg")
+    config.read(args.config)
 
     log_level = config["logging"].get("log_level")
     log_format = "[%(asctime)s] %(levelname)-8s %(message)s"
@@ -67,18 +82,6 @@ def main():
     logging.getLogger("asyncio").setLevel("WARNING")
     logging.getLogger("aiosqlite").setLevel("WARNING")
     logging.getLogger("urllib3").setLevel("WARNING")
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-y", "--year", type=int, required=True, help="Year: 2020, 2021, ..."
-    )
-    parser.add_argument(
-        "-m", "--month", type=int, required=True, help="Month: 4, 8, 12, ..."
-    )
-    parser.add_argument(
-        "-s", "--site", required=True, help="Site (GOCDB): UNI-FREIBURG, ..."
-    )
-    args = parser.parse_args()
 
     auditor_ip = config["auditor"].get("auditor_ip")
     auditor_port = config["auditor"].getint("auditor_port")
