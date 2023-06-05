@@ -85,9 +85,12 @@ def main():
 
     auditor_ip = config["auditor"].get("auditor_ip")
     auditor_port = config["auditor"].getint("auditor_port")
+    auditor_timeout = config["auditor"].getint("auditor_timeout")
 
     builder = AuditorClientBuilder()
-    builder = builder.address(auditor_ip, auditor_port)
+    builder = builder.address(auditor_ip, auditor_port).timeout(
+        auditor_timeout
+    )
     client = builder.build()
 
     try:
