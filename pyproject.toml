@@ -13,6 +13,7 @@ dependencies = [
 	     "cryptography==41.0.1",
 ]
 description = "AUDITOR plugin for sending accounting data to APEL"
+readme = "README.md"
 
 [project.optional-dependencies]
 style = [
