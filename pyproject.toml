@@ -12,6 +12,7 @@ dependencies = [
 	     "requests==2.31.0",
 	     "cryptography==41.0.1",
 ]
+description = "AUDITOR plugin for sending accounting data to APEL"
 
 [project.optional-dependencies]
 style = [
