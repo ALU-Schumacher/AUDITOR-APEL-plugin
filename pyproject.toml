@@ -24,6 +24,11 @@ tests = [
       "pytest",
       "pytest-cov",
 ]
+build = [
+      "build",
+      "setuptools",
+      "setuptools_scm[toml]",
+]
 
 [project.scripts]
 apel-publish = "apel_plugin.publish:main"
