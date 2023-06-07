@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools", "setuptools_scm[toml]"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "apel_plugin"
-version = "0.1.0"
+dynamic = ["version"]
 requires-python = ">=3.7"
 dependencies = [
 	     "python-auditor==0.1.0",
@@ -28,6 +28,10 @@ tests = [
 [project.scripts]
 apel-publish = "apel_plugin.publish:main"
 apel-republish = "apel_plugin.republish:main"
+
+[tool.setuptools_scm]
+local_scheme = "no-local-version"
+write_to = "src/apel_plugin/_version.py"
 
 [tool.setuptools.packages.find]
 where = ["src"]
