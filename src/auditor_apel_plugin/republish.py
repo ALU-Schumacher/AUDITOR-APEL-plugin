@@ -11,7 +11,7 @@ import argparse
 from datetime import datetime
 import pytz
 import base64
-from apel_plugin.core import (
+from auditor_apel_plugin.core import (
     get_token,
     create_summary_db,
     group_summary_db,

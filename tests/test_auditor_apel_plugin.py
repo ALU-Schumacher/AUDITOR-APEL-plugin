@@ -1,5 +1,5 @@
 import pytest
-from apel_plugin.core import (
+from auditor_apel_plugin.core import (
     get_begin_previous_month,
     create_time_db,
     get_time_db,
@@ -52,7 +52,7 @@ def create_rec(rec_values, conf):
     return rec
 
 
-class TestAPELPlugin:
+class TestAUDITORAPELPlugin:
     def test_get_begin_previous_month(self):
         time_a = datetime(2022, 10, 23, 12, 23, 55)
         time_b = datetime(1970, 1, 1, 00, 00, 00)

@@ -3,7 +3,7 @@ requires = ["setuptools", "setuptools_scm[toml]"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "apel_plugin"
+name = "auditor_apel_plugin"
 dynamic = ["version"]
 requires-python = ">=3.7"
 dependencies = [
@@ -31,12 +31,12 @@ build = [
 ]
 
 [project.scripts]
-apel-publish = "apel_plugin.publish:main"
-apel-republish = "apel_plugin.republish:main"
+auditor-apel-publish = "auditor_apel_plugin.publish:main"
+auditor-apel-republish = "auditor_apel_plugin.republish:main"
 
 [tool.setuptools_scm]
 local_scheme = "no-local-version"
-write_to = "src/apel_plugin/_version.py"
+write_to = "src/auditor_apel_plugin/_version.py"
 
 [tool.setuptools.packages.find]
 where = ["src"]
