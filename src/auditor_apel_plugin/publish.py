@@ -12,7 +12,7 @@ import configparser
 import argparse
 import base64
 from time import sleep
-from apel_plugin.core import (
+from auditor_apel_plugin.core import (
     get_token,
     get_time_db,
     get_report_time,
