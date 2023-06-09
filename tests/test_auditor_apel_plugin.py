@@ -11,6 +11,7 @@ from auditor_apel_plugin.core import (
     get_submit_host,
     get_voms_info,
     replace_record_string,
+    get_records,
 )
 from datetime import datetime
 import pytz
@@ -21,6 +22,19 @@ import configparser
 import pyauditor
 from unittest.mock import patch, PropertyMock
 import ast
+
+
+class FakeAuditorClient:
+    def __init__(self, test_case=""):
+        self.test_case = test_case
+
+    def get_stopped_since(self, start_time):
+        if self.test_case == "pass":
+            return "good"
+        if self.test_case == "fail_timeout":
+            raise RuntimeError("Request timed out")
+        if self.test_case == "fail_else":
+            raise RuntimeError("Other RuntimeError")
 
 
 def create_rec(rec_values, conf):
@@ -52,7 +66,7 @@ def create_rec(rec_values, conf):
     return rec
 
 
-class TestAUDITORAPELPlugin:
+class TestAuditorApelPlugin:
     def test_get_begin_previous_month(self):
         time_a = datetime(2022, 10, 23, 12, 23, 55)
         time_b = datetime(1970, 1, 1, 00, 00, 00)
@@ -865,3 +879,22 @@ class TestAUDITORAPELPlugin:
 
         result = replace_record_string(test_str_2)
         assert result == "/a/b/c/d/"
+
+    def test_get_records(self):
+        client = FakeAuditorClient("pass")
+
+        result = get_records(client, 42, 1)
+        assert result == "good"
+
+    def test_get_records_fail(self):
+        client = FakeAuditorClient("fail_timeout")
+
+        with pytest.raises(SystemExit) as pytest_error:
+            get_records(client, 42, 1)
+        assert pytest_error.type == SystemExit
+
+        client = FakeAuditorClient("fail_else")
+
+        with pytest.raises(Exception) as pytest_error:
+            get_records(client, 42, 1)
+        assert pytest_error.type == RuntimeError

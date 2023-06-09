@@ -8,6 +8,7 @@ from pathlib import Path
 import sqlite3
 from sqlite3 import Error
 from datetime import datetime, timedelta, time
+from time import sleep
 import pytz
 import json
 import sys
@@ -15,6 +16,32 @@ import requests
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import pkcs7
+
+
+def get_records(client, start_time, delay_time):
+    timeout_counter = 0
+
+    while timeout_counter < 2:
+        try:
+            records = client.get_stopped_since(start_time)
+            return records
+        except RuntimeError as e:
+            if "timed" in str(e):
+                timeout_counter += 1
+                logging.warning(
+                    f"Call to AUDITOR timed out {timeout_counter}/3! "
+                    f"Trying again in {timeout_counter * delay_time}s"
+                )
+                sleep(timeout_counter * delay_time)
+            else:
+                logging.critical(e)
+                raise e
+
+    logging.critical(
+        "Call to AUDITOR timed out 3/3, quitting! "
+        "Maybe increase auditor_timeout in the config"
+    )
+    sys.exit(1)
 
 
 def get_begin_previous_month(current_time):
