@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 
 import logging
-import asyncio
 from pyauditor import AuditorClientBuilder
 import configparser
 import argparse
@@ -19,10 +18,11 @@ from auditor_apel_plugin.core import (
     sign_msg,
     build_payload,
     send_payload,
+    get_records,
 )
 
 
-async def run(config, args, client):
+def run(config, args, client):
     client_cert = config["authentication"].get("client_cert")
     client_key = config["authentication"].get("client_key")
 
@@ -32,7 +32,7 @@ async def run(config, args, client):
 
     begin_month = datetime(year, month, 1).replace(tzinfo=pytz.utc)
 
-    records = await client.get_stopped_since(begin_month)
+    records = get_records(client, begin_month, 30)
     token = get_token(config)
     logging.debug(token)
 
@@ -79,7 +79,6 @@ def main():
         format=log_format,
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    logging.getLogger("asyncio").setLevel("WARNING")
     logging.getLogger("aiosqlite").setLevel("WARNING")
     logging.getLogger("urllib3").setLevel("WARNING")
 
@@ -91,10 +90,10 @@ def main():
     builder = builder.address(auditor_ip, auditor_port).timeout(
         auditor_timeout
     )
-    client = builder.build()
+    client = builder.build_blocking()
 
     try:
-        asyncio.run(run(config, args, client))
+        run(config, args, client)
     except KeyboardInterrupt:
         logging.critical("User abort")
     finally:

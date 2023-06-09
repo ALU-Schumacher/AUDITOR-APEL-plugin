@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 
 import logging
-import asyncio
 from pyauditor import AuditorClientBuilder
 from datetime import datetime
 import pytz
@@ -28,10 +27,11 @@ from auditor_apel_plugin.core import (
     create_sync_db,
     group_sync_db,
     create_sync,
+    get_records,
 )
 
 
-async def run(config, client):
+def run(config, client):
     report_interval = config["intervals"].getint("report_interval")
     time_db_path = config["paths"].get("time_db_path")
     publish_since = config["site"].get("publish_since")
@@ -39,6 +39,7 @@ async def run(config, client):
     client_key = config["authentication"].get("client_key")
     token = get_token(config)
     logging.debug(token)
+
     while True:
         time_db_conn = get_time_db(publish_since, time_db_path)
         last_report_time = get_report_time(time_db_conn)
@@ -56,7 +57,9 @@ async def run(config, client):
         try:
             start_time = get_start_time(time_db_conn)
             logging.info(f"Getting records since {start_time}")
-            records_summary = await client.get_stopped_since(start_time)
+
+            records_summary = get_records(client, start_time, 30)
+
             latest_stop_time = records_summary[-1].stop_time.replace(
                 tzinfo=pytz.utc
             )
@@ -75,7 +78,7 @@ async def run(config, client):
             logging.debug(post_summary.status_code)
 
             begin_previous_month = get_begin_previous_month(current_time)
-            records_sync = await client.get_stopped_since(begin_previous_month)
+            records_sync = get_records(client, begin_previous_month, 30)
             sync_db = create_sync_db(config, records_sync)
             grouped_sync_list = group_sync_db(sync_db)
             sync = create_sync(grouped_sync_list)
@@ -122,7 +125,6 @@ def main():
         format=log_format,
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    logging.getLogger("asyncio").setLevel("WARNING")
     logging.getLogger("aiosqlite").setLevel("WARNING")
     logging.getLogger("urllib3").setLevel("WARNING")
 
@@ -134,10 +136,10 @@ def main():
     builder = builder.address(auditor_ip, auditor_port).timeout(
         auditor_timeout
     )
-    client = builder.build()
+    client = builder.build_blocking()
 
     try:
-        asyncio.run(run(config, client))
+        run(config, client)
     except KeyboardInterrupt:
         logging.critical("User abort")
     finally:
