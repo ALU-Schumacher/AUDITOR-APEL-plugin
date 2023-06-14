@@ -249,7 +249,9 @@ def create_summary_db(config, records):
                            normcputime INTEGER NOT NULL,
                            starttime INTEGER NOT NULL,
                            stoptime INTEGER NOT NULL,
-                           user TEXT
+                           user TEXT,
+                           benchmarktype TEXT NOT NULL,
+                           benchmarkvalue FLOAT NOT NULL
                        )
                        """
 
@@ -272,14 +274,16 @@ def create_summary_db(config, records):
                             normcputime,
                             starttime,
                             stoptime,
-                            user
+                            user,
+                            benchmarktype,
+                            benchmarkvalue
                         )
                         VALUES(
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
                             ?, ?, ?, ?,
-                            ?, ?
+                            ?, ?, ?, ?
                         )
                         """
 
@@ -298,6 +302,7 @@ def create_summary_db(config, records):
 
     sites_to_report = json.loads(config["site"].get("sites_to_report"))
     infrastructure = config["site"].get("infrastructure_type")
+    benchmark_type = config["site"].get("benchmark_type")
     benchmark_name = config["auditor"].get("benchmark_name")
     cores_name = config["auditor"].get("cores_name")
     cpu_time_name = config["auditor"].get("cpu_time_name")
@@ -391,6 +396,8 @@ def create_summary_db(config, records):
             r.start_time.replace(tzinfo=pytz.utc).timestamp(),
             r.stop_time.replace(tzinfo=pytz.utc).timestamp(),
             user_name,
+            benchmark_type,
+            benchmark_value,
         )
         try:
             cur.execute(insert_record_sql, data_tuple)
@@ -518,7 +525,9 @@ def group_summary_db(summary_db, filter_by: (int, int, str) = None):
                         SUM(normcputime) as norm_cputime,
                         MIN(stoptime) as min_stoptime,
                         MAX(stoptime) as max_stoptime,
-                        user
+                        user,
+                        benchmarktype,
+                        benchmarkvalue
                  FROM records
                  {filter}
                  GROUP BY site,
@@ -531,7 +540,9 @@ def group_summary_db(summary_db, filter_by: (int, int, str) = None):
                           month,
                           cpucount,
                           nodecount,
-                          user
+                          user,
+                          benchmarktype,
+                          benchmarkvalue
                  """
 
     summary_db.row_factory = sqlite3.Row
@@ -593,6 +604,8 @@ def create_summary(grouped_summary_list):
         summary += f"CpuDuration: {int(entry['cputime'])}\n"
         summary += f"NormalisedWallDuration: {int(entry['norm_runtime'])}\n"
         summary += f"NormalisedCpuDuration: {int(entry['norm_cputime'])}\n"
+        summary += f"ServiceLevelType: {entry['benchmarktype']}\n"
+        summary += f"ServiceLevel: {entry['benchmarkvalue']}\n"
         summary += f"NumberOfJobs: {entry['jobcount']}\n"
         summary += "%%\n"
 

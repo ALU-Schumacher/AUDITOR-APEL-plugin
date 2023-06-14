@@ -345,7 +345,7 @@ class TestAuditorApelPlugin:
         sites_to_report = '["test-site-1", "test-site-2"]'
         default_submit_host = "https://default.submit_host.de:1234/xxx"
         infrastructure_type = "grid"
-        benchmark_name = "HEPSPEC06"
+        benchmark_name = "hepscore"
         cores_name = "Cores"
         cpu_time_name = "TotalCPU"
         nnodes_name = "NNodes"
@@ -353,6 +353,7 @@ class TestAuditorApelPlugin:
         meta_key_submithost = "headnode"
         meta_key_voms = "voms"
         meta_key_username = "subject"
+        benchmark_type = "hepscore23"
 
         conf = configparser.ConfigParser()
         conf["site"] = {
@@ -360,6 +361,7 @@ class TestAuditorApelPlugin:
             "sites_to_report": sites_to_report,
             "default_submit_host": default_submit_host,
             "infrastructure_type": infrastructure_type,
+            "benchmark_type": benchmark_type,
         }
         conf["auditor"] = {
             "benchmark_name": benchmark_name,
@@ -469,6 +471,7 @@ class TestAuditorApelPlugin:
             "sites_to_report": sites_to_report,
             "default_submit_host": default_submit_host,
             "infrastructure_type": infrastructure_type,
+            "benchmark_type": benchmark_type,
         }
 
         records = []
@@ -550,7 +553,7 @@ class TestAuditorApelPlugin:
         sites_to_report = '["test-site-1", "test-site-2"]'
         default_submit_host = "https://default.submit_host.de:1234/xxx"
         infrastructure_type = "grid"
-        benchmark_name = "HEPSPEC06"
+        benchmark_name = "hepscore"
         cores_name = "Cores"
         cpu_time_name = "TotalCPU"
         nnodes_name = "NNodes"
@@ -558,6 +561,7 @@ class TestAuditorApelPlugin:
         meta_key_submithost = "headnode"
         meta_key_voms = "voms"
         meta_key_username = "subject"
+        benchmark_type = "hepscore23"
 
         conf = configparser.ConfigParser()
         conf["site"] = {
@@ -565,6 +569,7 @@ class TestAuditorApelPlugin:
             "sites_to_report": sites_to_report,
             "default_submit_host": default_submit_host,
             "infrastructure_type": infrastructure_type,
+            "benchmark_type": benchmark_type,
         }
         conf["auditor"] = {
             "benchmark_name": benchmark_name,
@@ -642,7 +647,7 @@ class TestAuditorApelPlugin:
                 create_summary_db(conf, records)
             assert pytest_error.type == KeyError
 
-            conf["auditor"]["benchmark_name"] = "HEPSPEC06"
+            conf["auditor"]["benchmark_name"] = "hepscore"
             conf["site"][
                 "site_name_mapping"
             ] = '{"test-site-2": "TEST_SITE_2"}'
@@ -657,7 +662,7 @@ class TestAuditorApelPlugin:
 
     def test_get_submit_host(self):
         default_submit_host = "https://default.submit_host.de:1234/xxx"
-        benchmark_name = "HEPSPEC06"
+        benchmark_name = "hepscore"
         cores_name = "Cores"
         cpu_time_name = "TotalCPU"
         nnodes_name = "NNodes"
@@ -749,7 +754,7 @@ class TestAuditorApelPlugin:
 
     def test_get_voms_info(self):
         default_submit_host = "https://default.submit_host.de:1234/xxx"
-        benchmark_name = "HEPSPEC06"
+        benchmark_name = "hepscore"
         cores_name = "Cores"
         cpu_time_name = "TotalCPU"
         nnodes_name = "NNodes"
@@ -927,7 +932,7 @@ class TestAuditorApelPlugin:
         sites_to_report = '["test-site-1", "test-site-2"]'
         default_submit_host = "https://default.submit_host.de:1234/xxx"
         infrastructure_type = "grid"
-        benchmark_name = "HEPSPEC06"
+        benchmark_name = "hepscore"
         cores_name = "Cores"
         cpu_time_name = "TotalCPU"
         nnodes_name = "NNodes"
@@ -998,7 +1003,7 @@ class TestAuditorApelPlugin:
         sites_to_report = '["test-site-1", "test-site-2"]'
         default_submit_host = "https://default.submit_host.de:1234/xxx"
         infrastructure_type = "grid"
-        benchmark_name = "HEPSPEC06"
+        benchmark_name = "hepscore"
         cores_name = "Cores"
         cpu_time_name = "TotalCPU"
         nnodes_name = "NNodes"
