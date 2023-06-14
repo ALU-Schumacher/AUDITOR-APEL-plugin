@@ -12,6 +12,7 @@ from auditor_apel_plugin.core import (
     get_voms_info,
     replace_record_string,
     get_records,
+    get_site_id,
 )
 from datetime import datetime
 import pytz
@@ -37,6 +38,26 @@ class FakeAuditorClient:
             raise RuntimeError("Other RuntimeError")
 
 
+def create_rec_metaless(rec_values, conf):
+    rec = pyauditor.Record(rec_values["rec_id"], rec_values["start_time"])
+    rec.with_stop_time(rec_values["stop_time"])
+    rec.with_component(
+        pyauditor.Component(
+            conf["cores_name"], rec_values["n_cores"]
+        ).with_score(
+            pyauditor.Score(conf["benchmark_name"], rec_values["hepscore"])
+        )
+    )
+    rec.with_component(
+        pyauditor.Component(conf["cpu_time_name"], rec_values["tot_cpu"])
+    )
+    rec.with_component(
+        pyauditor.Component(conf["nnodes_name"], rec_values["n_nodes"])
+    )
+
+    return rec
+
+
 def create_rec(rec_values, conf):
     rec = pyauditor.Record(rec_values["rec_id"], rec_values["start_time"])
     rec.with_stop_time(rec_values["stop_time"])
@@ -54,13 +75,15 @@ def create_rec(rec_values, conf):
         pyauditor.Component(conf["nnodes_name"], rec_values["n_nodes"])
     )
     meta = pyauditor.Meta()
-    meta.insert(conf["meta_key_site"], [rec_values["site"]])
+
     if rec_values["submit_host"] is not None:
         meta.insert(conf["meta_key_submithost"], [rec_values["submit_host"]])
     if rec_values["user_name"] is not None:
         meta.insert(conf["meta_key_username"], [rec_values["user_name"]])
     if rec_values["voms"] is not None:
         meta.insert(conf["meta_key_voms"], [rec_values["voms"]])
+    if rec_values["site"] is not None:
+        meta.insert(conf["meta_key_site"], [rec_values["site"]])
     rec.with_meta(meta)
 
     return rec
@@ -627,6 +650,11 @@ class TestAuditorApelPlugin:
                 create_summary_db(conf, records)
             assert pytest_error.type == KeyError
 
+            rec_metaless = [create_rec_metaless(rec_1_values, conf["auditor"])]
+            with pytest.raises(Exception) as pytest_error:
+                create_summary_db(conf, rec_metaless)
+            assert pytest_error.type == AttributeError
+
     def test_get_submit_host(self):
         default_submit_host = "https://default.submit_host.de:1234/xxx"
         benchmark_name = "HEPSPEC06"
@@ -891,3 +919,147 @@ class TestAuditorApelPlugin:
         with pytest.raises(Exception) as pytest_error:
             get_records(client, 42, 1)
         assert pytest_error.type == RuntimeError
+
+    def test_get_site_id(self):
+        site_name_mapping = (
+            '{"test-site-1": "TEST_SITE_1", "test-site-2": "TEST_SITE_2"}'
+        )
+        sites_to_report = '["test-site-1", "test-site-2"]'
+        default_submit_host = "https://default.submit_host.de:1234/xxx"
+        infrastructure_type = "grid"
+        benchmark_name = "HEPSPEC06"
+        cores_name = "Cores"
+        cpu_time_name = "TotalCPU"
+        nnodes_name = "NNodes"
+        meta_key_site = "site_id"
+        meta_key_submithost = "headnode"
+        meta_key_voms = "voms"
+        meta_key_username = "subject"
+
+        conf = configparser.ConfigParser()
+        conf["site"] = {
+            "site_name_mapping": site_name_mapping,
+            "sites_to_report": sites_to_report,
+            "default_submit_host": default_submit_host,
+            "infrastructure_type": infrastructure_type,
+        }
+        conf["auditor"] = {
+            "benchmark_name": benchmark_name,
+            "cores_name": cores_name,
+            "cpu_time_name": cpu_time_name,
+            "nnodes_name": nnodes_name,
+            "meta_key_site": meta_key_site,
+            "meta_key_submithost": meta_key_submithost,
+            "meta_key_voms": meta_key_voms,
+            "meta_key_username": meta_key_username,
+        }
+
+        rec_1_values = {
+            "rec_id": "test_record_1",
+            "start_time": datetime(1984, 3, 3, 0, 0, 0),
+            "stop_time": datetime(1985, 3, 3, 0, 0, 0),
+            "n_cores": 8,
+            "hepscore": 10.0,
+            "tot_cpu": 15520000,
+            "n_nodes": 1,
+            "site": "test-site-1",
+            "submit_host": "https:%2F%2Ftest1.submit_host.de:1234%2Fxxx",
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test1: test1",
+            "voms": "%2Fatlas%2Fde",
+        }
+
+        rec_2_values = {
+            "rec_id": "test_record_2",
+            "start_time": datetime(2023, 1, 1, 14, 24, 11),
+            "stop_time": datetime(2023, 1, 2, 7, 11, 45),
+            "n_cores": 1,
+            "hepscore": 23.0,
+            "tot_cpu": 12234325,
+            "n_nodes": 2,
+            "site": "test-site-2",
+            "submit_host": "https:%2F%2Ftest2.submit_host.de:1234%2Fxxx",
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test2: test2",
+            "voms": "%2Fatlas%2Fde",
+        }
+
+        rec_1 = create_rec(rec_1_values, conf["auditor"])
+        rec_2 = create_rec(rec_2_values, conf["auditor"])
+
+        result = get_site_id(rec_1, conf)
+        assert result == rec_1_values["site"]
+
+        result = get_site_id(rec_2, conf)
+        assert result == rec_2_values["site"]
+
+    def test_get_site_id_fail(self):
+        site_name_mapping = (
+            '{"test-site-1": "TEST_SITE_1", "test-site-2": "TEST_SITE_2"}'
+        )
+        sites_to_report = '["test-site-1", "test-site-2"]'
+        default_submit_host = "https://default.submit_host.de:1234/xxx"
+        infrastructure_type = "grid"
+        benchmark_name = "HEPSPEC06"
+        cores_name = "Cores"
+        cpu_time_name = "TotalCPU"
+        nnodes_name = "NNodes"
+        meta_key_site = "site_id"
+        meta_key_submithost = "headnode"
+        meta_key_voms = "voms"
+        meta_key_username = "subject"
+
+        conf = configparser.ConfigParser()
+        conf["site"] = {
+            "site_name_mapping": site_name_mapping,
+            "sites_to_report": sites_to_report,
+            "default_submit_host": default_submit_host,
+            "infrastructure_type": infrastructure_type,
+        }
+        conf["auditor"] = {
+            "benchmark_name": benchmark_name,
+            "cores_name": cores_name,
+            "cpu_time_name": cpu_time_name,
+            "nnodes_name": nnodes_name,
+            "meta_key_site": meta_key_site,
+            "meta_key_submithost": meta_key_submithost,
+            "meta_key_voms": meta_key_voms,
+            "meta_key_username": meta_key_username,
+        }
+
+        rec_1_values = {
+            "rec_id": "test_record_1",
+            "start_time": datetime(1984, 3, 3, 0, 0, 0),
+            "stop_time": datetime(1985, 3, 3, 0, 0, 0),
+            "n_cores": 8,
+            "hepscore": 10.0,
+            "tot_cpu": 15520000,
+            "n_nodes": 1,
+            "site": None,
+            "submit_host": "https:%2F%2Ftest1.submit_host.de:1234%2Fxxx",
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test1: test1",
+            "voms": "%2Fatlas%2Fde",
+        }
+
+        rec_2_values = {
+            "rec_id": "test_record_2",
+            "start_time": datetime(2023, 1, 1, 14, 24, 11),
+            "stop_time": datetime(2023, 1, 2, 7, 11, 45),
+            "n_cores": 1,
+            "hepscore": 23.0,
+            "tot_cpu": 12234325,
+            "n_nodes": 2,
+            "site": "test-site-2",
+            "submit_host": "https:%2F%2Ftest2.submit_host.de:1234%2Fxxx",
+            "user_name": "%2FDC=ch%2FDC=cern%2FOU=Users%2FCN=test2: test2",
+            "voms": "%2Fatlas%2Fde",
+        }
+
+        rec_1 = create_rec(rec_1_values, conf["auditor"])
+        rec_2 = create_rec_metaless(rec_2_values, conf["auditor"])
+
+        with pytest.raises(Exception) as pytest_error:
+            get_site_id(rec_1, conf)
+        assert pytest_error.type == TypeError
+
+        with pytest.raises(Exception) as pytest_error:
+            get_site_id(rec_2, conf)
+        assert pytest_error.type == AttributeError
