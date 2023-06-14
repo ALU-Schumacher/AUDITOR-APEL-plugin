@@ -159,6 +159,20 @@ def replace_record_string(string):
     return updated_string
 
 
+def get_site_id(record, config):
+    meta_key_site = config["auditor"].get("meta_key_site")
+
+    try:
+        site_id = record.meta.get(meta_key_site)[0]
+        return site_id
+    except AttributeError as e:
+        logging.critical(f"No meta data found in {record.record_id}, aborting")
+        raise e
+    except TypeError as e:
+        logging.critical(f"No site name found in {record.record_id}, aborting")
+        raise e
+
+
 def get_submit_host(record, config):
     meta_key_submithost = config["auditor"].get("meta_key_submithost")
     default_submit_host = config["site"].get("default_submit_host")
@@ -288,11 +302,11 @@ def create_summary_db(config, records):
     cores_name = config["auditor"].get("cores_name")
     cpu_time_name = config["auditor"].get("cpu_time_name")
     nnodes_name = config["auditor"].get("nnodes_name")
-    meta_key_site = config["auditor"].get("meta_key_site")
     meta_key_username = config["auditor"].get("meta_key_username")
 
     for r in records:
-        site_id = r.meta.get(meta_key_site)[0]
+        site_id = get_site_id(r, config)
+
         if site_id not in sites_to_report:
             continue
 
@@ -432,10 +446,9 @@ def create_sync_db(config, records):
         site_name_mapping = None
 
     sites_to_report = json.loads(config["site"].get("sites_to_report"))
-    meta_key_site = config["auditor"].get("meta_key_site")
 
     for r in records:
-        site_id = r.meta.get(meta_key_site)[0]
+        site_id = get_site_id(r, config)
 
         if site_id not in sites_to_report:
             continue

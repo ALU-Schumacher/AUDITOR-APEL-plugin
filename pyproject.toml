@@ -43,7 +43,7 @@ where = ["src"]
 
 [tool.coverage.run]
 source = ["src"]
-omit = ["*__init__.py","*publish.py"]
+omit = ["*__init__.py","*publish.py","*_version.py"]
 branch = true
 
 [tool.black]
