@@ -1,9 +1,8 @@
-name: pypi-publish
+name: publish-pypi-test
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:
 
 jobs:
   build-and-publish:
@@ -29,11 +28,3 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-      - name: Publish to PyPI
-        if: startsWith(github.ref, 'refs/tags')
-        uses: pypa/gh-action-pypi-publish@release/v1
-      - name: Publish to GitHub
-        if: startsWith(github.ref, 'refs/tags')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: dist/*
