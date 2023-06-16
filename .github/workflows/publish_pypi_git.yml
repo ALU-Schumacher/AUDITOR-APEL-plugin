@@ -3,6 +3,7 @@ name: publish-pypi-git
 on:
   push:
     tags:
+      - v*
 
 jobs:
   build-and-publish:
