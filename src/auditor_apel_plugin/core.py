@@ -295,11 +295,7 @@ def create_summary_db(config, records):
         logging.critical(e)
         raise e
 
-    try:
-        site_name_mapping = json.loads(config["site"].get("site_name_mapping"))
-    except TypeError:
-        site_name_mapping = None
-
+    site_name_mapping = json.loads(config["site"].get("site_name_mapping"))
     sites_to_report = json.loads(config["site"].get("sites_to_report"))
     infrastructure = config["site"].get("infrastructure_type")
     benchmark_type = config["site"].get("benchmark_type")
@@ -315,16 +311,13 @@ def create_summary_db(config, records):
         if site_id not in sites_to_report:
             continue
 
-        if site_name_mapping is not None:
-            try:
-                site_name = site_name_mapping[site_id]
-            except KeyError:
-                logging.critical(
-                    f"No site name mapping defined for site {site_id}"
-                )
-                raise KeyError
-        else:
-            site_name = site_id
+        try:
+            site_name = site_name_mapping[site_id]
+        except KeyError:
+            logging.critical(
+                f"No site name mapping defined for site {site_id}"
+            )
+            raise
 
         submit_host = get_submit_host(r, config)
 
@@ -447,11 +440,7 @@ def create_sync_db(config, records):
         logging.critical(e)
         raise e
 
-    try:
-        site_name_mapping = json.loads(config["site"].get("site_name_mapping"))
-    except TypeError:
-        site_name_mapping = None
-
+    site_name_mapping = json.loads(config["site"].get("site_name_mapping"))
     sites_to_report = json.loads(config["site"].get("sites_to_report"))
 
     for r in records:
@@ -459,16 +448,14 @@ def create_sync_db(config, records):
 
         if site_id not in sites_to_report:
             continue
-        if site_name_mapping is not None:
-            try:
-                site_name = site_name_mapping[site_id]
-            except KeyError:
-                logging.critical(
-                    f"No site name mapping defined for site {site_id}"
-                )
-                sys.exit(1)
-        else:
-            site_name = site_id
+
+        try:
+            site_name = site_name_mapping[site_id]
+        except KeyError:
+            logging.critical(
+                f"No site name mapping defined for site {site_id}"
+            )
+            raise
 
         submit_host = get_submit_host(r, config)
 
