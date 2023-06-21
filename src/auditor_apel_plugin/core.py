@@ -630,10 +630,14 @@ def get_token(config):
     auth_url = config["authentication"].get("auth_url")
     client_cert = config["authentication"].get("client_cert")
     client_key = config["authentication"].get("client_key")
-    # ca_path = config["authentication"].get("ca_path")
+    verify_ca = config["authentication"].getboolean("verify_ca")
+    if verify_ca:
+        ca_path = config["authentication"].get("ca_path")
+    else:
+        ca_path = False
 
     response = requests.get(
-        auth_url, cert=(client_cert, client_key), verify=False
+        auth_url, cert=(client_cert, client_key), verify=ca_path
     )
     token = response.json()["token"]
 
@@ -669,14 +673,19 @@ def build_payload(msg):
 
 
 def send_payload(config, token, payload):
-    # ca_path = config["authentication"].get("ca_path")
     ams_url = config["authentication"].get("ams_url")
+    verify_ca = config["authentication"].getboolean("verify_ca")
+    if verify_ca:
+        ca_path = config["authentication"].get("ca_path")
+    else:
+        ca_path = False
+
     logging.debug(f"{ams_url}{token}")
     post = requests.post(
         f"{ams_url}{token}",
         json=payload,
         headers={"Content-Type": "application/json"},
-        verify=False,
+        verify=ca_path,
     )
 
     return post
