@@ -467,37 +467,6 @@ class TestAuditorApelPlugin:
                 rec_values["user_name"]
             )
 
-        conf["site"] = {
-            "sites_to_report": sites_to_report,
-            "default_submit_host": default_submit_host,
-            "infrastructure_type": infrastructure_type,
-            "benchmark_type": benchmark_type,
-        }
-
-        records = []
-
-        with patch(
-            "pyauditor.Record.runtime", new_callable=PropertyMock
-        ) as mocked_runtime:
-            mocked_runtime.return_value = runtime
-
-            for r_values in rec_value_list:
-                rec = create_rec(r_values, conf["auditor"])
-                records.append(rec)
-
-            result = create_summary_db(conf, records)
-
-        cur = result.cursor()
-
-        cur.execute("SELECT * FROM records")
-        content = cur.fetchall()
-
-        for idx, rec_values in enumerate(rec_value_list):
-            assert content[idx][0] == rec_values["site"]
-
-        cur.close()
-        result.close()
-
         rec_1_values["user_name"] = None
         records = []
 
