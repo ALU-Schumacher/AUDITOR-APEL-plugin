@@ -5,7 +5,7 @@
 
 import logging
 from pyauditor import AuditorClientBuilder
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import configparser
 import argparse
@@ -100,6 +100,10 @@ def run(config, client):
             logging.info("No new records, do nothing for now")
 
         time_db_conn.close()
+        logging.info(
+            "Next report scheduled for "
+            f"{datetime.now() + timedelta(seconds=report_interval)}"
+        )
         sleep(report_interval)
 
 
