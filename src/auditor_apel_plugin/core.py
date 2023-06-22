@@ -35,7 +35,7 @@ def get_records(client, start_time, delay_time):
                 sleep(timeout_counter * delay_time)
             else:
                 logging.critical(e)
-                raise e
+                raise
 
     logging.critical(
         "Call to AUDITOR timed out 3/3, quitting! "
@@ -106,7 +106,7 @@ def create_time_db(publish_since, time_db_path):
         return conn
     except Error as e:
         logging.critical(e)
-        raise e
+        raise
 
 
 def get_start_time(conn):
@@ -120,7 +120,7 @@ def get_start_time(conn):
         return start_time
     except Error as e:
         logging.critical(e)
-        raise e
+        raise
 
 
 def get_report_time(conn):
@@ -134,7 +134,7 @@ def get_report_time(conn):
         return report_time
     except Error as e:
         logging.critical(e)
-        raise e
+        raise
 
 
 def update_time_db(conn, stop_time, report_time):
@@ -150,7 +150,7 @@ def update_time_db(conn, stop_time, report_time):
         cur.close()
     except Error as e:
         logging.critical(e)
-        raise e
+        raise
 
 
 def replace_record_string(string):
@@ -165,12 +165,12 @@ def get_site_id(record, config):
     try:
         site_id = record.meta.get(meta_key_site)[0]
         return site_id
-    except AttributeError as e:
+    except AttributeError:
         logging.critical(f"No meta data found in {record.record_id}, aborting")
-        raise e
-    except TypeError as e:
+        raise
+    except TypeError:
         logging.critical(f"No site name found in {record.record_id}, aborting")
-        raise e
+        raise
 
 
 def get_submit_host(record, config):
@@ -293,7 +293,7 @@ def create_summary_db(config, records):
         cur.execute(create_table_sql)
     except Error as e:
         logging.critical(e)
-        raise e
+        raise
 
     site_name_mapping = json.loads(config["site"].get("site_name_mapping"))
     sites_to_report = json.loads(config["site"].get("sites_to_report"))
@@ -345,13 +345,13 @@ def create_summary_db(config, records):
             cputime = component_dict[cpu_time_name].amount
         except KeyError:
             logging.critical(f"no {cpu_time_name} in components")
-            raise KeyError
+            raise
 
         try:
             nodecount = component_dict[nnodes_name].amount
         except KeyError:
             logging.critical(f"no {nnodes_name} in components")
-            raise KeyError
+            raise
 
         try:
             cpucount = component_dict[cores_name].amount
@@ -359,13 +359,13 @@ def create_summary_db(config, records):
                 score_dict[s.name] = s.value
         except KeyError:
             logging.critical(f"no {cores_name} in components")
-            raise KeyError
+            raise
 
         try:
             benchmark_value = score_dict[benchmark_name]
         except KeyError:
             logging.critical(f"no {benchmark_name} in scores")
-            raise KeyError
+            raise
 
         norm_runtime = r.runtime * benchmark_value
         norm_cputime = cputime * benchmark_value
@@ -396,14 +396,14 @@ def create_summary_db(config, records):
             cur.execute(insert_record_sql, data_tuple)
         except Error as e:
             logging.critical(e)
-            raise e
+            raise
 
     try:
         conn.commit()
         cur.close()
     except Error as e:
         logging.critical(e)
-        raise e
+        raise
 
     return conn
 
@@ -438,7 +438,7 @@ def create_sync_db(config, records):
         cur.execute(create_table_sql)
     except Error as e:
         logging.critical(e)
-        raise e
+        raise
 
     site_name_mapping = json.loads(config["site"].get("site_name_mapping"))
     sites_to_report = json.loads(config["site"].get("sites_to_report"))
@@ -473,14 +473,14 @@ def create_sync_db(config, records):
             cur.execute(insert_record_sql, data_tuple)
         except Error as e:
             logging.critical(e)
-            raise e
+            raise
 
     try:
         conn.commit()
         cur.close()
     except Error as e:
         logging.critical(e)
-        raise e
+        raise
 
     return conn
 
