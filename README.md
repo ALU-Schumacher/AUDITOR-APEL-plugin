@@ -1,3 +1,6 @@
+# !!!ATTENTION!!!
+This repository is archived and no longer updated. The code of the AUDITOR-APEL-plugin is now included in the [AUDITOR repository](https://github.com/ALU-Schumacher/AUDITOR).
+
 # AUDITOR-APEL-plugin
 
 Plugin for AUDITOR to report job records to APEL
